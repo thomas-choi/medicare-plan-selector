@@ -89,3 +89,15 @@ def test_api_role_is_read_only_on_plan_tables(migrated: None) -> None:
         for t in USER_TABLES:
             c.execute(text(f"SELECT COUNT(*) FROM `{t}`")).scalar_one()
     eng.dispose()
+
+
+def test_models_match_migrations(scratch_schema: dict[str, str]) -> None:
+    """`alembic check` equivalent: a model change without a migration fails here."""
+    from alembic.autogenerate import compare_metadata
+    from alembic.migration import MigrationContext
+
+    eng = create_engine(scratch_schema["migrator"])
+    with eng.connect() as c:
+        diff = compare_metadata(MigrationContext.configure(c, opts={"compare_type": True}), metadata)
+    eng.dispose()
+    assert diff == []

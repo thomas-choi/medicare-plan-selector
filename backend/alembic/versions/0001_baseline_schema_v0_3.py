@@ -110,9 +110,7 @@ def upgrade() -> None:
         sa.Column("finished_at", sa.DateTime(), nullable=True),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_ingest_run")),
     )
-    op.create_index(
-        op.f("ix_ingest_run_plan_year_source_id"), "ingest_run", ["plan_year", "source_id"], unique=False
-    )
+    op.create_index(op.f("ix_ingest_run_plan_year_source_id"), "ingest_run", ["plan_year", "source_id"], unique=False)
     op.create_table(
         "insulin_cost",
         sa.Column("plan_year", sa.SmallInteger(), autoincrement=False, nullable=False),
@@ -244,9 +242,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name=op.f("pk_usage_ledger")),
     )
     op.create_index(op.f("ix_usage_ledger_day"), "usage_ledger", ["day"], unique=False)
-    op.create_index(
-        op.f("ix_usage_ledger_session_id_hash"), "usage_ledger", ["session_id_hash"], unique=False
-    )
+    op.create_index(op.f("ix_usage_ledger_session_id_hash"), "usage_ledger", ["session_id_hash"], unique=False)
     op.create_table(
         "zip_county_cache",
         sa.Column("zip", sa.String(length=5), nullable=False),

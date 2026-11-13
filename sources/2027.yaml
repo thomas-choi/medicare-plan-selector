@@ -1,0 +1,71 @@
+# Plan year 2027 sources (DESIGN §3). `selector ingest --year 2027` fetches, pins sha256 in ../sources.lock,
+# parses, loads and validates. Raw files go to the git-ignored data/raw/2027/.
+plan_year: 2027
+
+sources:
+  S1:
+    title: CMS Landscape CY2027 (202611)
+    url: https://www.cms.gov/files/zip/cy2027-landscape-202611.zip
+    fetch: zip
+    vintage: "202611"
+    members:
+      landscape: CY2027_Landscape_202611/CY2027_Landscape_202611.csv
+
+  S2:
+    title: CMS PBP Benefits 2027
+    url: https://www.cms.gov/files/zip/pbp-benefits-2027.zip
+    fetch: zip
+    vintage: "2027-pbp-20261001"
+    members:
+      plan_area: PlanArea.txt
+      b7: pbp_b7_health_prof.txt
+      b4: pbp_b4_emerg_urgent.txt
+      b9: pbp_b9_outpat_hosp.txt
+      b1a: pbp_b1a_inpat_hosp.txt
+
+  S3:
+    title: CMS monthly Part D formulary files CY2027
+    url: https://data.cms.gov/sites/default/files/2026-10/73ce0d29-e440-4d9a-9608-93678a50e8c8/2027_20261008.zip
+    fetch: remote_nested_zip   # 2.3 GB outer zip; only these inner zips are range-read (pharmacy networks skipped)
+    vintage: "20261031"
+    members:
+      geo: geographic locator file
+      plan_info: plan information
+      formulary: basic drugs formulary file
+      cost: beneficiary cost file
+      insulin: insulin beneficiary cost file
+
+  XW1:
+    title: CMS MA State/County Penetration, November 2026 (SSA and FIPS county codes)
+    url: https://www.cms.gov/files/zip/ma-state-county-penetration-november-2026.zip
+    fetch: zip
+    vintage: "2026-11"
+    members:
+      penetration: State_County_Penetration_MA_2026_11/State_County_Penetration_MA_2026_11.csv
+
+  XW2:
+    title: Census 2020 national county FIPS codes (validation of SSA→FIPS overrides)
+    url: https://www2.census.gov/geo/docs/reference/codes2020/national_county2020.txt
+    fetch: file
+    vintage: "2020"
+
+# Values entered by hand from a cited document (no machine-readable file).
+params:
+  part_d:
+    std_deductible_cents: 70000
+    oop_threshold_cents: 240000
+    citation: https://www.cms.gov/files/document/2027-announcement.pdf
+    vintage: "2027 Rate Announcement"
+
+# Ingest refuses to finish unless these rows match (IMPLEMENTATION-PLAN M1 acceptance).
+# Values verified against CY2027_Landscape_202611.csv on 2026-11-12 (zip sha256 0b479aa3…210f62f).
+golden:
+  - plan_key: H0028_028_0
+    county_ssa: "03060"          # Maricopa, AZ (FIPS 04013)
+    part_c_premium_cents: 0
+    part_d_deductible_cents: 32500
+    moop_in_network_cents: 655000
+    star_overall: "4.5"
+
+# States whose SSA→FIPS mapping is pending (approved 2026-11-12; fix before public launch).
+pending_fips_states: [Alaska, Connecticut]

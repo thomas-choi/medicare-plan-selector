@@ -1,0 +1,60 @@
+{
+  "2027": {
+    "S1": {
+      "url": "https://www.cms.gov/files/zip/cy2027-landscape-202611.zip",
+      "vintage": "202611",
+      "sha256": "0b479aa3babb21d7ed1136c4e354d9451fb45ddb0cc89d60d2dc8d8dd210f62f",
+      "size": 12580399,
+      "last_modified": "",
+      "members": {
+        "CY2027_Landscape_202611/CY2027_Landscape_202611.csv": "f93171115b666e7ceabeea38ae5b73f6b1d488c2c01add78fc5deccecdff984d"
+      }
+    },
+    "S2": {
+      "url": "https://www.cms.gov/files/zip/pbp-benefits-2027.zip",
+      "vintage": "2027-pbp-20261001",
+      "sha256": "6d8430e2ecb51acf3cc8547f12dd73506aa73f0dccf034cc3c3393868576ff47",
+      "size": 23373818,
+      "last_modified": "",
+      "members": {
+        "PlanArea.txt": "b3f1dfc017059fc7b1abe0ae1d01039c6dcfa5e44e300546a361644060f61202",
+        "pbp_b7_health_prof.txt": "206bf1d86ec2a112fc47e77a583aa1ea4fccd777ae087c44a70ad59db4cdca5b",
+        "pbp_b4_emerg_urgent.txt": "1fd090b83504b58c095486a41bfb6827a975e513049255549498407eb937d320",
+        "pbp_b9_outpat_hosp.txt": "77ad72723d6b2fb3f2c68227a35627f23e91054f77cec086be7c3cf91b3800d8",
+        "pbp_b1a_inpat_hosp.txt": "38773259499987d03e2745406180fe471094c3db36a46e9f2ce07c34c3f22fa6"
+      }
+    },
+    "S3": {
+      "url": "https://data.cms.gov/sites/default/files/2026-10/73ce0d29-e440-4d9a-9608-93678a50e8c8/2027_20261008.zip",
+      "vintage": "20261031",
+      "sha256": null,
+      "size": 0,
+      "last_modified": "",
+      "members": {
+        "geographic locator file 20261031.txt": "27fc2feea35c14ef4178d8ce5c34765da80edc8de6312d66f3327d53af6f6644",
+        "plan information  20261031.txt": "c43530c4879765e078bed4942c22e7188f70b2bb7cab62e11a71ca233d64f018",
+        "basic drugs formulary file  20261031.txt": "e0546788078f80dbc1a13cf155d88b36aebd6ca28998bebf735ee32ac836baf1",
+        "beneficiary cost file  20261031.txt": "11cf39a02111b90e18bdcab02a31d55c904860921ce5086468173d87ccfac27e",
+        "insulin beneficiary cost file  20261031.txt": "f00245f9d8dc83f6344e5f4f1bd77f77ffffe9942cb85013adcd98f85fb84000"
+      }
+    },
+    "XW1": {
+      "url": "https://www.cms.gov/files/zip/ma-state-county-penetration-november-2026.zip",
+      "vintage": "2026-11",
+      "sha256": "f5072542890a0313ad4acf1b234797a93909dc8da1ec044bbb546e1473ec5229",
+      "size": 85037,
+      "last_modified": "",
+      "members": {
+        "State_County_Penetration_MA_2026_11/State_County_Penetration_MA_2026_11.csv": "ee0f995167e1bf20088ba510ad3a6cd930d17040595ab9c53adb15dead0d5a9f"
+      }
+    },
+    "XW2": {
+      "url": "https://www2.census.gov/geo/docs/reference/codes2020/national_county2020.txt",
+      "vintage": "2020",
+      "sha256": "9f6e5f6eb6ac2f5e9a36d5fd01dec77991bddc75118f748a069441a4782970d6",
+      "size": 126639,
+      "last_modified": "",
+      "members": {}
+    }
+  }
+}

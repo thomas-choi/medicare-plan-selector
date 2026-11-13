@@ -26,6 +26,7 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.dialects.mysql import MEDIUMBLOB, VARBINARY
+from sqlalchemy.sql.expression import false, true
 
 NAMING = {
     "ix": "ix_%(table_name)s_%(column_0_N_name)s",
@@ -62,16 +63,23 @@ ingest_run = Table(
     Index(None, "plan_year", "source_id"),
 )
 
+# CMS plan data is keyed by SSA county code; HUD returns FIPS. `fips` is NULL where no crosswalk exists yet
+# (Alaska, Connecticut: `fips_status='pending'`). Several SSA codes can share one FIPS (e.g. Los Angeles partial).
 county = Table(
     "county",
     metadata,
-    Column("fips", String(5), primary_key=True),
-    Column("ssa_code", String(5)),
-    Column("state", String(2), nullable=False),
+    Column("ssa_code", String(5), primary_key=True),
+    Column("fips", String(5)),
+    Column("state", String(2)),
+    Column("state_name", String(64), nullable=False),
     Column("name", String(64), nullable=False),
     Column("ma_region_code", String(8)),
     Column("pdp_region_code", String(8)),
-    Index(None, "state", "name"),
+    Column("fips_status", String(16), nullable=False),  # crosswalk | override | pending
+    Column("partial", Boolean, nullable=False, default=False),
+    Column("src_ref", JSON, nullable=False),
+    Index(None, "fips"),
+    Index(None, "state_name", "name"),
 )
 
 zip_county_cache = Table(
@@ -107,6 +115,11 @@ plan = Table(
     Column("star_overall", Numeric(2, 1)),
     Column("star_part_c", Numeric(2, 1)),
     Column("star_part_d", Numeric(2, 1)),
+    Column("star_note", String(64)),  # e.g. "Plan Too New To Be Measured"
+    Column("pdp_region_code", String(8)),
+    Column("ma_region_code", String(8)),
+    # CMS withheld this plan's Part D data (S3 PLAN_SUPPRESSED_YN=Y): no drug-cost estimate is possible.
+    Column("part_d_suppressed", Boolean, nullable=False, default=False, server_default=false()),
     Column("src_ref", JSON, nullable=False),
 )
 
@@ -115,8 +128,8 @@ plan_county = Table(
     metadata,
     _plan_year(),
     Column("plan_key", String(16), primary_key=True),
-    Column("fips", String(5), primary_key=True),
-    Index(None, "plan_year", "fips"),
+    Column("ssa_code", String(5), primary_key=True),
+    Index(None, "plan_year", "ssa_code"),
 )
 
 pbp_benefit = Table(
@@ -125,9 +138,25 @@ pbp_benefit = Table(
     _plan_year(),
     Column("plan_key", String(16), primary_key=True),
     Column("service_code", String(16), primary_key=True),
-    Column("copay_cents", Cents),
-    Column("coins_pct", Numeric(5, 2)),
+    Column("copay_cents", Cents),  # minimum of the PBP range
+    Column("copay_max_cents", Cents),
+    Column("coins_pct", Numeric(5, 2)),  # minimum of the PBP range
+    Column("coins_max_pct", Numeric(5, 2)),
     Column("notes", String(512)),
+    Column("src_ref", JSON, nullable=False),
+)
+
+# Inpatient (PBP b1a) per-day cost-sharing intervals, per stay.
+pbp_inpatient_interval = Table(
+    "pbp_inpatient_interval",
+    metadata,
+    _plan_year(),
+    Column("plan_key", String(16), primary_key=True),
+    Column("seq", SmallInteger, primary_key=True, autoincrement=False),
+    Column("begin_day", SmallInteger, nullable=False),
+    Column("end_day", SmallInteger, nullable=False),
+    Column("copay_per_day_cents", Cents),
+    Column("coins_pct", Numeric(5, 2)),
     Column("src_ref", JSON, nullable=False),
 )
 
@@ -164,9 +193,13 @@ tier_cost = Table(
     Column("tier", SmallInteger, primary_key=True),
     Column("phase", String(16), primary_key=True),  # deductible | initial
     Column("pharmacy_type", String(24), primary_key=True),  # pref_retail | retail | mail | pref_mail
-    Column("days_supply", SmallInteger, primary_key=True),
+    Column("days_supply", SmallInteger, primary_key=True),  # 30 | 60 | 90 | 0 (other)
     Column("copay_cents", Cents),
     Column("coins_pct", Numeric(5, 2)),
+    Column("coins_min_cents", Cents),
+    Column("coins_max_cents", Cents),
+    Column("ded_applies", Boolean, nullable=False, default=True, server_default=true()),
+    Column("specialty", Boolean, nullable=False, default=False, server_default=false()),
     Column("src_ref", JSON, nullable=False),
 )
 
@@ -178,7 +211,8 @@ insulin_cost = Table(
     Column("tier", SmallInteger, primary_key=True),
     Column("pharmacy_type", String(24), primary_key=True),
     Column("days_supply", SmallInteger, primary_key=True),
-    Column("copay_cents", Cents, nullable=False),
+    Column("copay_cents", Cents),
+    Column("coins_pct", Numeric(5, 2)),  # cost = lesser of copay and coinsurance (SPUF methodology)
     Column("src_ref", JSON, nullable=False),
 )
 
@@ -212,6 +246,7 @@ PLAN_TABLES = (
     "plan",
     "plan_county",
     "pbp_benefit",
+    "pbp_inpatient_interval",
     "formulary",
     "plan_formulary",
     "tier_cost",
@@ -240,9 +275,7 @@ session = Table(
 
 
 def _session_fk(nullable: bool, ondelete: str) -> Column[str]:
-    return Column(
-        "session_id", String(64), ForeignKey("session.id_hash", ondelete=ondelete), nullable=nullable
-    )
+    return Column("session_id", String(64), ForeignKey("session.id_hash", ondelete=ondelete), nullable=nullable)
 
 
 profile = Table(
@@ -296,9 +329,7 @@ feedback = Table(
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     _session_fk(nullable=True, ondelete="SET NULL"),
     Column("kind", String(32), nullable=False),
-    Column(
-        "recommendation_id", BigInteger, ForeignKey("recommendation.id", ondelete="SET NULL"), nullable=True
-    ),
+    Column("recommendation_id", BigInteger, ForeignKey("recommendation.id", ondelete="SET NULL"), nullable=True),
     Column("rating", SmallInteger),
     Column("thumbs", SmallInteger),  # +1 / -1
     Column("chosen_plan_key", String(16)),
@@ -378,8 +409,6 @@ admin_audit = Table(
 )
 
 # Tables a No-save request must never write (DESIGN §8.5, test N1/N2).
-USER_TABLES = frozenset(
-    {"session", "profile", "chat_msg", "recommendation", "consent_log", "feedback", "usage_ledger"}
-)
+USER_TABLES = frozenset({"session", "profile", "chat_msg", "recommendation", "consent_log", "feedback", "usage_ledger"})
 # Aggregates without session/IP linkage that a No-save request may write.
 NOSAVE_ALLOWED_TABLES = frozenset({"feedback_counter", "usage_daily"})

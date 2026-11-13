@@ -1,0 +1,19 @@
+COUNTY_CODE|STATENAME|COUNTY|MA_REGION_CODE|MA_REGION|PDP_REGION_CODE|PDP_REGION
+02013|Alaska|Aleutians East|26|Alaska|34|Alaska
+03000|Arizona|Apache|21|Arizona|28|Arizona
+03010|Arizona|Cochise|21|Arizona|28|Arizona
+03020|Arizona|Coconino|21|Arizona|28|Arizona
+03030|Arizona|Gila|21|Arizona|28|Arizona
+03040|Arizona|Graham|21|Arizona|28|Arizona
+03050|Arizona|Greenlee|21|Arizona|28|Arizona
+03055|Arizona|La Paz|21|Arizona|28|Arizona
+03060|Arizona|Maricopa|21|Arizona|28|Arizona
+03070|Arizona|Mohave|21|Arizona|28|Arizona
+03080|Arizona|Navajo|21|Arizona|28|Arizona
+03090|Arizona|Pima|21|Arizona|28|Arizona
+03100|Arizona|Pinal|21|Arizona|28|Arizona
+03110|Arizona|Santa Cruz|21|Arizona|28|Arizona
+03120|Arizona|Yavapai|21|Arizona|28|Arizona
+03130|Arizona|Yuma|21|Arizona|28|Arizona
+05200|California|Los Angeles|24|California|32|California
+05201|California|Los Angeles (Partial)|24|California|32|California

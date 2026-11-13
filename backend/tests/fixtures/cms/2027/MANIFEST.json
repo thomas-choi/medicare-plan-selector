@@ -1,0 +1,85 @@
+{
+  "note": "Public CMS/Census samples, \u2264200 rows each; see docs/DATA-SOURCES.md",
+  "sources": {
+    "S1": {
+      "url": "https://www.cms.gov/files/zip/cy2027-landscape-202611.zip",
+      "vintage": "202611",
+      "sha256": "0b479aa3babb21d7ed1136c4e354d9451fb45ddb0cc89d60d2dc8d8dd210f62f"
+    },
+    "S2": {
+      "url": "https://www.cms.gov/files/zip/pbp-benefits-2027.zip",
+      "vintage": "2027-pbp-20261001",
+      "sha256": "6d8430e2ecb51acf3cc8547f12dd73506aa73f0dccf034cc3c3393868576ff47"
+    },
+    "S3": {
+      "url": "https://data.cms.gov/sites/default/files/2026-10/73ce0d29-e440-4d9a-9608-93678a50e8c8/2027_20261008.zip",
+      "vintage": "20261031",
+      "sha256": null
+    },
+    "XW1": {
+      "url": "https://www.cms.gov/files/zip/ma-state-county-penetration-november-2026.zip",
+      "vintage": "2026-11",
+      "sha256": "f5072542890a0313ad4acf1b234797a93909dc8da1ec044bbb546e1473ec5229"
+    },
+    "XW2": {
+      "url": "https://www2.census.gov/geo/docs/reference/codes2020/national_county2020.txt",
+      "vintage": "2020",
+      "sha256": "9f6e5f6eb6ac2f5e9a36d5fd01dec77991bddc75118f748a069441a4782970d6"
+    }
+  },
+  "files": {
+    "landscape.csv": {
+      "rows": 27
+    },
+    "geo.txt": {
+      "rows": 18
+    },
+    "plan_info.txt": {
+      "rows": 11
+    },
+    "formulary.txt": {
+      "rows": 12
+    },
+    "cost.txt": {
+      "rows": 161
+    },
+    "insulin.txt": {
+      "rows": 41
+    },
+    "plan_area.txt": {
+      "rows": 10
+    },
+    "b7.txt": {
+      "rows": 5
+    },
+    "b4.txt": {
+      "rows": 5
+    },
+    "b9.txt": {
+      "rows": 5
+    },
+    "b1a.txt": {
+      "rows": 5
+    },
+    "penetration.csv": {
+      "rows": 16
+    },
+    "census_county.txt": {
+      "rows": 29
+    }
+  },
+  "plans": [
+    "H0028_028_0",
+    "H0028_077_0",
+    "H0609_083_0",
+    "H5216_034_0",
+    "R7220_001_0",
+    "S4802_092_0",
+    "S4802_134_0"
+  ],
+  "rxcuis": [
+    "197361",
+    "285018",
+    "861007"
+  ]
+}

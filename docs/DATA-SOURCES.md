@@ -13,6 +13,8 @@ agency. This project is **not affiliated with or endorsed by CMS, Medicare or an
 | S10 | NLM RxNorm API | Drug name → RxCUI |
 | S11 | CMS NPPES NPI Registry API | Provider lookup |
 | S12 | HUD USPS ZIP crosswalk API | ZIP → county |
+| XW1 | CMS MA State/County Penetration (November 2026) | SSA ↔ FIPS county codes (geography columns only) |
+| XW2 | US Census Bureau 2020 county FIPS list | Validates the hand-curated `sources/ssa_fips_overrides.csv` |
 
 Full URLs, verification status and sha256 values are in [design/DESIGN.md §3](design/DESIGN.md) and `sources.lock`.
 

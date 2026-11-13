@@ -1,0 +1,11 @@
+pbp_a_hnumber	pbp_a_plan_identifier	segment_id	pbp_a_ben_cov	pbp_a_plan_type	orgtype	bid_id	contract_id	plan_id	segment_id	county_code	pending_flag	partial_flag	contract_year	eghp_flag	county	stcd
+H0028	028	0	1	01	01	H0028_028_0	H0028	028	0	03060	0		2027	0	Maricopa	AZ
+H0028	028	0	1	01	01	H0028_028_0	H0028	028	0	03070	0		2027	0	Mohave	AZ
+H0028	028	0	1	01	01	H0028_028_0	H0028	028	0	03120	0		2027	0	Yavapai	AZ
+H0028	077	0	1	01	01	H0028_077_0	H0028	077	0	03060	0		2027	0	Maricopa	AZ
+H0609	083	0	1	02	01	H0609_083_0	H0609	083	0	03060	0		2027	0	Maricopa	AZ
+H5216	034	0	1	04	01	H5216_034_0	H5216	034	0	03060	0		2027	0	Maricopa	AZ
+H5216	034	0	1	04	01	H5216_034_0	H5216	034	0	03070	0		2027	0	Mohave	AZ
+H5216	034	0	1	04	01	H5216_034_0	H5216	034	0	03090	0		2027	0	Pima	AZ
+H5216	034	0	1	04	01	H5216_034_0	H5216	034	0	03100	0		2027	0	Pinal	AZ
+H5216	034	0	1	04	01	H5216_034_0	H5216	034	0	03120	0		2027	0	Yavapai	AZ
