@@ -218,3 +218,20 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---- medicare-plan-selector additions ----
+# Raw CMS/HUD downloads and local databases never go in git (DESIGN §3, §11).
+/data/
+*.zip
+*.sqlite
+*.sqlite3
+# Env files: only the placeholder template is committed.
+.env.*
+!.env.example
+# Frontend
+node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+# Local Claude Code settings
+.claude/settings.local.json

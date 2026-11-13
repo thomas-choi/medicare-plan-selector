@@ -1,0 +1,38 @@
+# Run before every proposed commit: `make precommit` (installs hooks into the uv dev env).
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  - repo: local
+    hooks:
+      - id: forbidden-files
+        name: block raw data, databases, archives and env files
+        entry: python3 scripts/check_forbidden_files.py
+        language: system
+        pass_filenames: true
+      - id: ruff
+        name: ruff
+        entry: bash -c 'cd backend && uv run ruff check . && uv run ruff format --check .'
+        language: system
+        pass_filenames: false
+        files: ^backend/
+      - id: mypy
+        name: mypy
+        entry: bash -c 'cd backend && uv run mypy'
+        language: system
+        pass_filenames: false
+        files: ^backend/selector/
+      - id: eslint
+        name: eslint
+        entry: bash -c 'cd frontend && npx eslint .'
+        language: system
+        pass_filenames: false
+        files: ^frontend/
+      - id: prettier
+        name: prettier
+        entry: bash -c 'cd frontend && npx prettier --check .'
+        language: system
+        pass_filenames: false
+        files: ^frontend/
