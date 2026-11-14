@@ -12,6 +12,45 @@ MySQL 8.4 and Redis 7.4; the frontend is React + TypeScript + Vite.
 > chat agent and UI are being built (see [docs/CHANGELOG.md](docs/CHANGELOG.md)). The API currently serves
 > `/api/health` only.
 
+## Quick start (run the UI locally)
+**What you'll see today:** the UI is still a skeleton. It shows the page title and the disclaimer; the chat, plan
+table and consent screen arrive in WP7. The API answers only `GET /api/health`.
+
+1. Install Python 3.13, [uv](https://docs.astral.sh/uv/), Node.js 20 + npm and Docker with Compose v2
+   (details in [Prerequisites](#prerequisites)).
+2. Clone and install:
+   ```bash
+   git clone https://github.com/thomas-choi/medicare-plan-selector.git
+   cd medicare-plan-selector
+   git checkout feat/mvp
+   (cd backend && uv sync --frozen)
+   (cd frontend && npm ci)
+   ```
+3. Start MySQL and Redis, create the schema and (optionally) load the 2027 CMS plan data. These need the
+   environment from [Setup](#setup) exported in your shell:
+   ```bash
+   make stack-up                                            # MySQL 127.0.0.1:3307, Redis 127.0.0.1:6380
+   make migrate
+   (cd backend && uv run selector ingest --year 2027)       # optional today; see Data ingest
+   ```
+   At this stage the API and UI don't read the database yet, so you can skip this step to just see the UI.
+4. Start the API on http://127.0.0.1:8000 (terminal 1):
+   ```bash
+   cd backend
+   uv run uvicorn --factory selector.api.main:app_factory --host 127.0.0.1 --port 8000
+   ```
+   It needs no `.env` today; if you exported one, `LLM_PRICE_IN_PER_MTOK_USD` and `LLM_PRICE_OUT_PER_MTOK_USD`
+   must be numbers. Check it with `curl http://127.0.0.1:8000/api/health`. Or run it in Docker instead:
+   `docker compose --profile app up -d --build api` (same port).
+5. Start the UI (terminal 2) and open **http://localhost:5173/**. Vite proxies `/api` to port 8000.
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+   Production-style alternative: `npm run build && npx vite preview`, then open http://localhost:4173/.
+6. Stop: press `Ctrl+C` in both terminals, then `docker compose --profile app down` to stop the containers
+   (this also wipes the dev database and Redis, which run on tmpfs).
+
 ## Prerequisites
 - Python 3.13 and [uv](https://docs.astral.sh/uv/) (CI pins uv 0.12.21)
 - Node.js 20 and npm
@@ -69,13 +108,17 @@ docker compose --profile app build api                  # API image (backend/Doc
 ```
 
 ## Start and stop
-```bash
-make stack-up                                   # MySQL 8.4 on 127.0.0.1:3307, Redis 7.4 on 127.0.0.1:6380
-make migrate                                    # Alembic upgrade + table grants (uses MIGRATOR_DATABASE_URL)
-docker compose --profile app up -d api          # API on http://127.0.0.1:8000 (health: /api/health)
-cd frontend && npm run dev                      # UI on http://localhost:5173, proxies /api to :8000
-```
-Stop everything with `docker compose --profile app down` (`make stack-down` runs `docker compose down`).
+The [Quick start](#quick-start-run-the-ui-locally) has the full sequence. Reference:
+
+| Task | Command |
+|---|---|
+| Start MySQL + Redis | `make stack-up` |
+| Schema + grants | `make migrate` |
+| API on the host | `cd backend && uv run uvicorn --factory selector.api.main:app_factory --host 127.0.0.1 --port 8000` |
+| API in Docker | `docker compose --profile app up -d api` (http://127.0.0.1:8000; runs `selector ephemeral-flush` first, then 2 workers) |
+| UI (dev) | `cd frontend && npm run dev` → http://localhost:5173/ |
+| UI (built) | `cd frontend && npm run build && npx vite preview` → http://localhost:4173/ |
+| Stop containers | `docker compose --profile app down` (`make stack-down` runs `docker compose down`) |
 
 The dev stack keeps MySQL and Redis on tmpfs: **all data is lost when the containers stop**, so re-run
 `make migrate` and the ingest after every restart. Redis runs with persistence off by design.
