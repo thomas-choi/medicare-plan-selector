@@ -1,0 +1,93 @@
+[
+  {
+    "plan_key": "H0028_028_0",
+    "rank": 1,
+    "dropped_reason": null,
+    "total_low_cents": 322855,
+    "total_high_cents": 464855,
+    "worst_case_cents": 1047855,
+    "drug_low_cents": 47375,
+    "drug_high_cents": 149375,
+    "medical_low_cents": 32000,
+    "medical_high_cents": 72000,
+    "drugs_covered": 2
+  },
+  {
+    "plan_key": "H5216_034_0",
+    "rank": 2,
+    "dropped_reason": null,
+    "total_low_cents": 512880,
+    "total_high_cents": 671880,
+    "worst_case_cents": 1379380,
+    "drug_low_cents": 79500,
+    "drug_high_cents": 193500,
+    "medical_low_cents": 37500,
+    "medical_high_cents": 82500,
+    "drugs_covered": 2
+  },
+  {
+    "plan_key": "S4802_134_0",
+    "rank": 3,
+    "dropped_reason": null,
+    "total_low_cents": 392880,
+    "total_high_cents": 446880,
+    "worst_case_cents": null,
+    "drug_low_cents": 18000,
+    "drug_high_cents": 72000,
+    "medical_low_cents": 125040,
+    "medical_high_cents": 125040,
+    "drugs_covered": 2
+  },
+  {
+    "plan_key": "S4802_092_0",
+    "rank": 4,
+    "dropped_reason": null,
+    "total_low_cents": 395280,
+    "total_high_cents": 447780,
+    "worst_case_cents": null,
+    "drug_low_cents": 18000,
+    "drug_high_cents": 70500,
+    "medical_low_cents": 125040,
+    "medical_high_cents": 125040,
+    "drugs_covered": 2
+  },
+  {
+    "plan_key": "H0609_083_0",
+    "rank": 5,
+    "dropped_reason": null,
+    "total_low_cents": 280480,
+    "total_high_cents": 1780480,
+    "worst_case_cents": 2398480,
+    "drug_low_cents": 24000,
+    "drug_high_cents": 1440000,
+    "medical_low_cents": 13000,
+    "medical_high_cents": 97000,
+    "drugs_covered": 0
+  },
+  {
+    "plan_key": "R7220_001_0",
+    "rank": 6,
+    "dropped_reason": null,
+    "total_low_cents": 304480,
+    "total_high_cents": 1765480,
+    "worst_case_cents": 2283480,
+    "drug_low_cents": 24000,
+    "drug_high_cents": 1440000,
+    "medical_low_cents": 37000,
+    "medical_high_cents": 82000,
+    "drugs_covered": 0
+  },
+  {
+    "plan_key": "H0028_077_0",
+    "rank": null,
+    "dropped_reason": "Special Needs Plan (Chronic or Disabling Condition); shown only if you qualify.",
+    "total_low_cents": 293780,
+    "total_high_cents": 445780,
+    "worst_case_cents": 1350880,
+    "drug_low_cents": 20400,
+    "drug_high_cents": 122400,
+    "medical_low_cents": 29900,
+    "medical_high_cents": 79900,
+    "drugs_covered": 2
+  }
+]

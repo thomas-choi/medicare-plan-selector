@@ -58,3 +58,20 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
 - HUD fallback (HUD-API-SETUP.md): `selector hud load-file ZIP_COUNTY_MMYYYY.xlsx|.csv [--state AZ]`, and
   `selector/geo/resolve.py` (cache → HUD API if a token is set → state county picker).
 - Tests: blank values, env-file order, HUD file parsing (CSV/XLSX), fixture ingest CLI, ZIP resolution fallbacks.
+
+## WP2 — Cost engine (2026-11-17)
+- `selector/cost/`: `part_d.py` (12-month simulation: plan deductible incl. tiers where it doesn't apply, tier
+  copay/coinsurance with CMS min/max, $0 after the `part_d_params` OOP threshold, insulin = lesser of copay and
+  coinsurance capped at $35/month and outside the deductible, non-formulary at full price outside TrOOP, 30/60/90-day
+  and mail order), `medical.py` (MA copays/coinsurance × utilization preset capped at MOOP; Original Medicare =
+  Part B deductible + 20% + Part A deductible, no cap), `engine.py` (totals, worst case, filters with dropped
+  reasons, neutral score), `params.py` (all assumptions in one public file), `repo.py` (read-only DB loaders).
+- Price order: user price → proxy (`drug_price_proxy`, empty until SPUF prices are ingested) → tier price band
+  (low/high range + "check Plan Finder").
+- Part B premium/deductible are settings with 2026 values as labelled placeholders (S7 TBD); every estimate cites
+  them with `src_ref` source `S7`.
+- Neutral ranking: weights over total cost, worst case, stars, must-have fit (share of the user's drugs covered);
+  unrated plans score stars as neutral (0.5); "no cap" scores as the worst case; ties by `plan_key`.
+- Tests: 44 table-driven unit cases (copay generic, deductible crossover, TrOOP mid-year, insulin, non-formulary,
+  30/60/90-day and mail, missing price → range, MOOP, zero drugs, rounding, PDP + Part B, carrier-name permutation,
+  SNP/path/must-have filters) and golden cost JSON on the Maricopa fixtures, with H0028_028_0 checked by hand.

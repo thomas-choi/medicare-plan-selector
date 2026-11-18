@@ -100,3 +100,24 @@ def scratch_schema() -> Iterator[dict[str, str]]:
         with admin.begin() as c:
             c.execute(text(f"DROP DATABASE IF EXISTS `{name}`"))
         admin.dispose()
+
+
+@pytest.fixture(scope="session")
+def fixture_db(scratch_schema: dict[str, str]) -> dict[str, str]:
+    """The scratch schema with the committed CMS fixtures and dev ZIP rows loaded (what `make ingest-dev` loads)."""
+    import tempfile
+
+    from sqlalchemy import create_engine
+
+    from selector.geo.hud import store_zip_counties
+    from selector.geo.hud_file import read_hud_file
+    from selector.ingest.devdata import DEV_ZIP_FILE, FIXTURE_ROOT, fixture_fetched
+    from selector.ingest.run import run_ingest
+
+    eng = create_engine(scratch_schema["ingest"])
+    run_ingest(eng, 2027, sources_dir=REPO_ROOT / "sources", lock_path=Path(tempfile.mkdtemp()) / "sources.lock",
+               fetched=fixture_fetched(FIXTURE_ROOT / "2027"))  # fmt: skip
+    with eng.begin() as c:
+        store_zip_counties(c, read_hud_file(DEV_ZIP_FILE, 2026, 2))
+    eng.dispose()
+    return scratch_schema
