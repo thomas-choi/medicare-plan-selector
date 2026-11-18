@@ -17,13 +17,14 @@ from pydantic import BaseModel, ConfigDict, Field
 from selector.agent import tools as T
 from selector.agent.orchestrator import BudgetExceeded, Orchestrator, TurnResult
 from selector.agent.policy import ESTIMATE_DISCLAIMER
-from selector.agent.providers import ProviderError
+from selector.agent.providers import ProviderError, ToolCall
 from selector.agent.providers.factory import provider_label
 from selector.api import cookies
 from selector.api.state import AppState, SavedModeUnavailable
 from selector.geo.resolve import counties_in_state, resolve_zip
 from selector.lookups import LookupError_
 from selector.profile import Profile
+from selector.quotas import QuotaExceeded
 from selector.store import write_guard
 from selector.store.base import CONSENT_VERSION, SessionExpired, SessionHandle, SessionMeta, StoredMessage, now_utc
 
@@ -34,6 +35,11 @@ DISCLAIMER = (
     "Estimates only. This tool is not affiliated with Medicare or any plan and does not enroll you. "
     "Confirm costs, drugs and doctors on Medicare.gov Plan Finder or with the plan before you enroll."
 )
+
+
+def client_ip(request: Request) -> str | None:
+    """uvicorn runs with --proxy-headers behind nginx, so this is the real client address. Never logged."""
+    return request.client.host if request.client else None
 
 
 def st(request: Request) -> AppState:
@@ -79,7 +85,7 @@ def config(state: AppState = Depends(st)) -> dict[str, Any]:
         "feedback_retention_days": s.feedback_retention_days,
         "ephemeral_idle_minutes": s.ephemeral_idle_minutes,
         "ephemeral_max_hours": s.ephemeral_max_hours,
-        "llm_enabled": state.llm_enabled and not state.extras.get("llm_paused", False),
+        "llm_enabled": state.llm_enabled and not state.llm_paused(),
         "llm_provider_label": provider_label(s) if state.llm_enabled else None,
         "captcha_provider": s.captcha_provider,
         "limits": {"message_chars": s.max_message_chars, "drugs": s.max_drugs, "providers": s.max_providers},
@@ -118,11 +124,14 @@ def _create(state: AppState, mode: str, consent_phi: bool, request: Request) -> 
     h = cookies.new_handle(mode)
     now = now_utc().isoformat()
     meta = SessionMeta(mode, now, now, CONSENT_VERSION, state.settings.plan_year, mode == "saved", consent_phi)
-    hook = state.extras.get("on_session_create")
-    if hook:
-        hook(request, h)  # WP5: sessions-per-IP quota (raises 429)
+    ip_hash = None
+    if state.quotas is not None:
+        try:
+            ip_hash = state.quotas.on_new_session(client_ip(request))
+        except QuotaExceeded as e:
+            raise HTTPException(429, {"code": e.code, "message": e.message}) from e
     with write_guard.request_mode(mode):
-        state.store(h).create(h, meta)
+        state.store(h).create(h, meta, ip_hash if mode == "saved" else None)
     return h, meta
 
 
@@ -314,41 +323,58 @@ def persist_turn(sess: Session, user_text: str, res: TurnResult, profile: Profil
         ],
         (tin, tout),
     )
+    if any(c["name"] == "compare_plans" for c in res.tool_calls):
+        return save_top(sess, T.ToolContext(st_.engine, st_.settings, profile, res.canvas), profile)
+    return []
+
+
+def save_top(sess: Session, ctx: T.ToolContext, profile: Profile) -> list[str]:
+    """Record the top plans shown (Saved: `recommendation` rows, the anchor for linked ratings; No-save: Redis)."""
+    st_ = sess.state
     rec_ids: list[str] = []
-    if any(c["name"] == "compare_plans" for c in res.tool_calls) and res.canvas.get("rows"):
-        top = [r for r in res.canvas["rows"] if r.get("rank")][:5]
+    if ctx.canvas.get("rows"):
+        top = [r for r in ctx.canvas["rows"] if r.get("rank")][:5]
         w = profile.weights.model_dump()
-        rec_ids = store.save_recommendations(
-            sess.h,
-            [{**r, "weights": w, "plan_year": st_.settings.plan_year} for r in top],
-            T.ToolContext(st_.engine, st_.settings, profile).data_vintage(),
+        rec_ids = sess.store.save_recommendations(
+            sess.h, [{**r, "weights": w, "plan_year": st_.settings.plan_year} for r in top], ctx.data_vintage()
         )
+        # The cards' feedback widgets refer to these ids.
+        ctx.canvas["recommendation_ids"] = dict(zip([r["plan_key"] for r in top], rec_ids, strict=True))
+        sess.store.save_canvas(sess.h, ctx.canvas)
     return rec_ids
 
 
 @router.post("/chat")
-def chat(body: ChatIn, sess: Session = Depends(current)) -> StreamingResponse:
+def chat(body: ChatIn, request: Request, sess: Session = Depends(current)) -> StreamingResponse:
     st_ = sess.state
     s = st_.settings
     if len(body.message) > s.max_message_chars:
         raise HTTPException(
             422, {"code": "too_long", "message": f"Messages are limited to {s.max_message_chars} characters."}
         )
-    if not st_.llm_enabled or st_.extras.get("llm_paused"):
+    if not st_.llm_enabled or st_.llm_paused():
         raise HTTPException(503, {"code": "no_llm", "message": "Chat is off right now. Use the form to compare plans."})
-    check = st_.extras.get("chat_precheck")
-    if check:
-        check(sess)  # WP5 quotas: raises 429 with a no-LLM hint
+    q = st_.quotas
+    if q is not None:
+        try:
+            q.before_turn(sess.h.id_hash)
+        except QuotaExceeded as e:
+            raise HTTPException(429, {"code": e.code, "message": e.message}) from e
+        except BudgetExceeded as e:
+            raise HTTPException(429, {"code": "budget", "message": str(e)}) from e
     profile = sess.store.load_profile(sess.h) or Profile()
     history = [m.to_chat() for m in sess.store.load_chat(sess.h)]
     canvas = sess.store.load_canvas(sess.h)
     ctx = tool_context(sess, profile, canvas)
-    sink = st_.extras.get("usage_sink")
-    orch = Orchestrator(
-        st_.providers,
-        budget_check=st_.extras.get("budget_check"),
-        usage_sink=(lambda p, m, u: sink(sess, p, m, u)) if sink else None,
-    )
+    if q is not None:
+        ip_hash = q.ip_hash(client_ip(request)) if sess.h.mode == "saved" else None
+        orch = Orchestrator(
+            st_.providers,
+            budget_check=q.budget_check,
+            usage_sink=lambda p, m, u: q.record(sess.h.mode, sess.h.id_hash, ip_hash, p, m, u),
+        )
+    else:
+        orch = Orchestrator(st_.providers)
     try:
         res = orch.run_turn(ctx, history, body.message)
     except BudgetExceeded as e:
@@ -384,3 +410,39 @@ def chat(body: ChatIn, sess: Session = Depends(current)) -> StreamingResponse:
     return StreamingResponse(
         events(), media_type="text/event-stream", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"}
     )
+
+
+# ------------------------------------------------------------------ no-LLM comparison
+
+
+class CompareIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    profile: Profile | None = None
+    limit: int = Field(default=3, ge=1, le=5)
+
+
+@router.post("/compare")
+def compare_endpoint(body: CompareIn, sess: Session = Depends(current)) -> dict[str, Any]:
+    """The no-LLM mode (DESIGN §8.2, §9): the intake form → the ranked table, with no model involved. Works when
+    chat is off, paused by the budget, or over a session quota."""
+    profile = body.profile
+    if profile is not None:
+        sess.store.save_profile(sess.h, profile)
+    else:
+        profile = sess.store.load_profile(sess.h) or Profile()
+    canvas = sess.store.load_canvas(sess.h)
+    ctx = tool_context(sess, profile, canvas)
+    out = T.execute(ctx, ToolCall("form", "compare_plans", {"limit": body.limit}))
+    if "error" in out:
+        raise HTTPException(422, {"code": out["error"], "message": out.get("user_message", "Check the form.")})
+    sess.store.save_canvas(sess.h, ctx.canvas)
+    rec_ids = save_top(sess, ctx, profile)
+    return {
+        "canvas": ctx.canvas,
+        "top": out["top"],
+        "checklist": out["checklist"],
+        "approximation_notes": out["approximation_notes"],
+        "data_vintage": ctx.data_vintage(),
+        "recommendation_ids": rec_ids,
+        "disclaimer": ESTIMATE_DISCLAIMER,
+    }

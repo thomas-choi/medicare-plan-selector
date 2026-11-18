@@ -98,6 +98,9 @@ class Settings(BaseSettings):
     max_drugs: int = 30
     max_providers: int = 15
     captcha_provider: Literal["none", "turnstile", "hcaptcha"] = "none"
+    # Optional pepper for the per-IP quota key. The key is already HMAC(daily random salt in Redis, IP prefix);
+    # blank is fine.
+    ip_hash_secret: SecretStr = SecretStr("")
 
     # External lookups.
     hud_api_token: SecretStr = SecretStr("")

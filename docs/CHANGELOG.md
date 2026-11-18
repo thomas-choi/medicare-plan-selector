@@ -117,3 +117,16 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
   feedback text, session; recommendation and redacted feedback rows kept unlinked).
 - Tests: crypto/cookie, write guard (N2 unit + API engine), N3, N4 (fake clock + real expiry), N5, N7, N8,
   Saved-mode ciphertext, delete-my-data, purge.
+
+## WP5 — Quotas, cost ledger, no-LLM mode (2026-11-17)
+- `selector/quotas.py`: Redis counters for turns and tokens per session, new sessions per IP prefix per UTC day
+  (HMAC with a random daily salt kept in Redis for 48 h, optional `IP_HASH_SECRET` pepper; /24 and /48 prefixes),
+  and the global `LLM_DAILY_BUDGET_USD` (micro-USD from `LLM_PRICE_*`; re-seeded from `usage_daily` if Redis lost it).
+- `usage_daily` (all modes, no session/IP linkage) and `usage_ledger` (Saved only; removed by delete-my-data).
+- The budget check runs before every model call, so a turn can stop midway (429 `budget`); once spent,
+  `/api/config` reports `llm_enabled: false` and `/api/chat` answers 503 `no_llm`.
+- `POST /api/compare`: the no-LLM comparison (form → ranked table, top 3, checklist, notes, data vintage) that keeps
+  working when chat is off, paused or over quota. Saved mode records `recommendation` rows; their ids go into the
+  canvas for the feedback widgets.
+- `deploy/nginx/ratelimit.conf`: `limit_req` 30 r/min on `/api`, 6 r/min on `/api/chat`, `limit_conn` for SSE.
+- New setting `IP_HASH_SECRET` (optional).

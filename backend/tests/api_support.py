@@ -31,6 +31,7 @@ def settings(db: dict[str, str], **kw: Any) -> Settings:
         "llm_provider": "fake",
         "profile_enc_key": TEST_PROFILE_KEY,
         "cookie_secure": False,
+        "max_sessions_per_ip_per_day": 1_000_000,  # tests start many sessions from one "IP"
     }
     base.update(kw)
     return Settings(_env_file=None, **base)

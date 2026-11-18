@@ -17,6 +17,7 @@ from selector.config import Settings
 from selector.db import make_engine
 from selector.geo.hud import HudClient
 from selector.lookups import NppesClient, RxNavClient
+from selector.quotas import Quotas
 from selector.store import write_guard
 from selector.store.base import SessionHandle, SessionStore
 from selector.store.ephemeral_store import EphemeralSessionStore
@@ -36,6 +37,7 @@ class AppState:
     hud: HudClient | None
     rxnav: RxNavClient | None
     nppes: NppesClient | None
+    quotas: Quotas | None = None
     extras: dict[str, Any] = field(default_factory=dict)
 
     def store(self, h: SessionHandle) -> SessionStore:
@@ -48,6 +50,9 @@ class AppState:
     @property
     def llm_enabled(self) -> bool:
         return bool(self.providers)
+
+    def llm_paused(self) -> bool:
+        return self.quotas is not None and self.quotas.paused()
 
 
 def _providers(s: Settings) -> list[ChatProvider]:
@@ -80,6 +85,7 @@ def build_state(
         saved = MySQLSessionStore(engine, r, key, s.profile_key_version, s.retention_days)
     token = s.hud_api_token.get_secret_value()
     return AppState(
+        quotas=Quotas(r, engine, s),
         settings=s,
         engine=engine,
         redis=r,
