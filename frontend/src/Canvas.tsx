@@ -187,7 +187,7 @@ export function CostChart({ rows }: { rows: PlanRow[] }) {
   if (!rows.length) return <p>No ranked plans to chart.</p>;
   const max = Math.max(...rows.map((r) => Math.max(r.total_high_cents, r.worst_case_cents ?? 0)), 1);
   const W = 640;
-  const label = 190;
+  const label = 230;
   const barH = 22;
   const gap = 12;
   const scale = (c: number) => (c / max) * (W - label - 20);
@@ -205,8 +205,8 @@ export function CostChart({ rows }: { rows: PlanRow[] }) {
           let x = label;
           return (
             <g key={r.plan_key}>
-              <text x={0} y={y + barH * 0.7} className="bar-label">
-                {r.plan_name.length > 26 ? `${r.plan_name.slice(0, 25)}…` : r.plan_name}
+              <text x={0} y={y + barH * 0.72} className="bar-label">
+                {r.plan_name.length > 28 ? `${r.plan_name.slice(0, 27)}…` : r.plan_name}
               </text>
               {parts.map((p) => {
                 const w = scale(p.v);

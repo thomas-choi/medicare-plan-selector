@@ -18,8 +18,12 @@ export function Chat({ history, enabled, maxChars, onCanvas, onProfile, onLimit 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => setMsgs(history), [history]);
-  useEffect(() => end.current?.scrollIntoView?.({ block: "end" }), [msgs]);
+  useEffect(() => {
+    setMsgs(history);
+  }, [history]);
+  useEffect(() => {
+    end.current?.scrollIntoView?.({ block: "end" });
+  }, [msgs]);
 
   async function send() {
     const text = input.trim();
