@@ -56,6 +56,18 @@ def cmd_ephemeral_flush(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_purge(args: argparse.Namespace) -> int:
+    """Nightly retention purge (DESIGN §8.1): idle Saved sessions and old feedback."""
+    from selector.db import make_engine
+    from selector.store.mysql_store import purge_expired
+
+    s = get_settings()
+    with make_engine(s.database_url).begin() as conn:
+        out = purge_expired(conn, s.retention_days, s.feedback_retention_days)
+    print(f"purged {out['sessions']} sessions, {out['feedback']} feedback rows")
+    return 0
+
+
 def cmd_ingest(args: argparse.Namespace) -> int:
     from selector.db import make_engine
     from selector.ingest.manifest import LockMismatch
@@ -167,6 +179,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     f = sub.add_parser("ephemeral-flush", help="delete all No-save (eph:*) keys; run at API start")
     f.set_defaults(func=cmd_ephemeral_flush)
+
+    pg = sub.add_parser(
+        "purge", help="delete Saved sessions idle > RETENTION_DAYS and feedback > FEEDBACK_RETENTION_DAYS"
+    )
+    pg.set_defaults(func=cmd_purge)
     return p
 
 

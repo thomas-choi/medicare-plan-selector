@@ -99,3 +99,21 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
   transcript replay (`tests/fixtures/transcripts/`), validator rejects an injected fake premium, provider fallback,
   budget stop, and the red-team set (prompt injection, cross-session, "rank X first", HTML/markdown/link injection,
   over-long input, network claim).
+
+## WP4 — Sessions, No-save mode, API (2026-11-17)
+- `SessionStore` with two implementations: `EphemeralSessionStore` (Redis `eph:{sid_hash}:*`, AES-GCM with a
+  per-session key that only the cookie holds, sliding idle TTL capped at `EPHEMERAL_MAX_HOURS`, injectable clock)
+  and `MySQLSessionStore` (Saved; ZIP/location, drugs, doctors and chat encrypted with `PROFILE_ENC_KEY`).
+- Write guard (`before_cursor_execute`) on the API engine: a No-save request that writes a user table or
+  `zip_county_cache` raises; only `feedback_counter`/`usage_daily` and the explicit `allow_writes("feedback")`
+  team-message opt-in pass.
+- Cookie `msp_sid = v1.<n|s>.<sid>[.<key>]` (HttpOnly, SameSite=Lax, Secure per `COOKIE_SECURE`, path `/api`).
+- Endpoints: `GET /api/config`, `POST/GET/DELETE /api/session`, `POST /api/session/end` (beacon → grace TTL),
+  `PUT /api/profile`, `GET /api/location|counties|drugs|providers`, `POST /api/chat` (SSE: meta, delta, canvas,
+  profile, done; validated text is streamed in chunks).
+- Allowlist access log (request id, method, path, status, ms) — no bodies, query strings, cookies, IPs or session
+  hashes; validation errors never echo input; `httpx` request logging silenced (RxNav URLs carry drug names).
+- `selector purge` (nightly retention purge) and delete-my-data (profile, chat, consent log, usage ledger, encrypted
+  feedback text, session; recommendation and redacted feedback rows kept unlinked).
+- Tests: crypto/cookie, write guard (N2 unit + API engine), N3, N4 (fake clock + real expiry), N5, N7, N8,
+  Saved-mode ciphertext, delete-my-data, purge.
