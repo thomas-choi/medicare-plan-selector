@@ -147,3 +147,22 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
   stars, outcome distribution, rows by kind/status, LLM usage by mode); every action in `admin_audit`.
 - Tests: redactor cases, N1 (row counts + `CHECKSUM TABLE` of every user table unchanged across the full No-save
   flow; counters hold no session/IP/PHI), N9 backend part, Saved rows/opt-in/unlink on delete, agent tool, admin.
+
+## WP7 — Frontend (2026-11-17)
+- React SPA (no new dependencies): consent + mode picker (No-save preselected per `DEFAULT_SESSION_MODE`, Saved
+  disabled when the server has no `PROFILE_ENC_KEY`, names the LLM provider and the lookup services), header with
+  mode badge, "Download comparison", "Feedback", "End session & erase" / "Delete my data"; disclaimer on every page.
+- Intake form: ZIP → county (split ZIPs show each county's share; unknown ZIP → state + county picker), drug search
+  via RxNav or manual RxCUI, days supply, optional price per fill, doctors (network always "call to confirm"),
+  path, utilization, pharmacy, minimum stars, "cover all my drugs". "Compare plans" uses the no-LLM endpoint.
+- Chat over SSE (validated text streamed in chunks) with source chips; disabled with a notice in no-LLM mode or
+  over quota while the form keeps working.
+- Canvas: top-3 cards with 👍/👎, sortable table (dropped plans greyed with the reason), SVG stacked cost chart
+  with worst-case markers, side-by-side (2–5 selected plans), checklist; "How we estimate" notes.
+- Feedback: outcome card, feedback dialog (No-save: "Send a message to the team" with the storage notice; Saved:
+  include-details opt-in). Markdown export built in memory. Safe markdown renderer (React-escaped, no HTML/images,
+  links only to medicare.gov, cms.gov, shiphelp.org). `pagehide` → `sendBeacon('/api/session/end')` in No-save.
+- State is memory-only (ESLint still bans browser storage). Vitest: disclaimer, consent/mode, intake→compare,
+  storage empty, renewed-session notice, no-LLM notice, markdown safety, table/chart/side-by-side, export, SSE
+  parser, feedback dialog in both modes.
+- `/api/config` now also returns the checklist and the link allowlist.

@@ -113,6 +113,7 @@ def test_requests_without_session_are_rejected(fixture_db: dict[str, str]) -> No
     assert c.post("/api/chat", json={"message": "hi"}).status_code == 401
     cfg = c.get("/api/config").json()
     assert cfg["default_mode"] == "nosave" and cfg["modes"] == ["nosave", "saved"] and cfg["llm_enabled"]
+    assert cfg["checklist"] and cfg["llm_provider_label"]
 
 
 def test_validation_errors_never_echo_input(fixture_db: dict[str, str]) -> None:

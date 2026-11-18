@@ -1,0 +1,385 @@
+/* Large, high-contrast defaults for an older audience (WCAG 2.2 AA target). */
+:root {
+  --fg: #1b1b1b;
+  --muted: #4a4a4a;
+  --bg: #f6f7f9;
+  --card: #fff;
+  --accent: #005ea2;
+  --danger: #b50909;
+  --ok: #00703c;
+  --border: #c9ccd1;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  font-size: 18px;
+  line-height: 1.5;
+  color: var(--fg);
+  background: var(--bg);
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+.app {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 16px 32px;
+}
+header.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+}
+header.top h1 {
+  font-size: 1.5rem;
+  margin: 0;
+}
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.badge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+  border: 2px solid;
+}
+.badge.nosave {
+  color: var(--ok);
+}
+.badge.saved {
+  color: var(--accent);
+}
+button {
+  font: inherit;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #fff;
+  cursor: pointer;
+  min-height: 44px;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid #ffbf47;
+  outline-offset: 2px;
+}
+button.primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+button.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+button.link {
+  border: none;
+  background: none;
+  text-decoration: underline;
+  min-height: 0;
+  padding: 0;
+}
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+input,
+select,
+textarea {
+  font: inherit;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  max-width: 100%;
+}
+label {
+  display: block;
+  margin: 6px 0;
+}
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  margin: 12px 0;
+}
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.row.small input {
+  width: 12em;
+}
+.grid2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(320px, 2fr) 3fr;
+  gap: 16px;
+}
+@media (max-width: 960px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+}
+.error {
+  color: var(--danger);
+  font-weight: 600;
+}
+.notice {
+  background: #fff5d6;
+  border: 1px solid #e5c76b;
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+.mode-line {
+  color: var(--muted);
+  margin: 0;
+}
+.hint {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.ok {
+  color: var(--ok);
+}
+.mode-option {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  margin: 8px 0;
+}
+.mode-option.selected {
+  border-color: var(--accent);
+}
+.mode-option.disabled {
+  opacity: 0.6;
+}
+ul.drugs {
+  list-style: none;
+  padding: 0;
+}
+ul.drugs li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 4px 0;
+  border-bottom: 1px solid #eee;
+}
+ul.drugs li span {
+  flex: 1 1 8em;
+}
+ul.candidates {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.messages {
+  max-height: 420px;
+  overflow-y: auto;
+}
+.msg {
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin: 6px 0;
+}
+.msg.user {
+  background: #e7f2fa;
+  margin-left: 15%;
+}
+.msg.assistant {
+  background: #f3f3f3;
+  margin-right: 10%;
+}
+.chat textarea {
+  flex: 1;
+  min-width: 200px;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.chip {
+  font-size: 0.75rem;
+  background: #e8e8e8;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.top3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+.plan-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  position: relative;
+}
+.plan-card h3 {
+  font-size: 1.05rem;
+  margin: 0 0 4px;
+  padding-right: 2.5em;
+}
+.plan-card .rank {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.plan-card .org {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.rating {
+  display: flex;
+  gap: 6px;
+}
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin: 12px 0 8px;
+  flex-wrap: wrap;
+}
+.tabs [aria-selected="true"] {
+  background: var(--accent);
+  color: #fff;
+}
+.table-wrap {
+  overflow-x: auto;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.95rem;
+}
+th,
+td {
+  border-bottom: 1px solid #e3e3e3;
+  padding: 6px;
+  text-align: left;
+  vertical-align: top;
+}
+th button {
+  border: none;
+  background: none;
+  font-weight: 700;
+  padding: 0;
+  min-height: 0;
+}
+tr.dropped {
+  color: #777;
+  background: #f4f4f4;
+}
+.sub {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.reason {
+  color: #8a4b00;
+  font-size: 0.85rem;
+}
+.chart svg {
+  width: 100%;
+  height: auto;
+}
+.chart .bar-label {
+  font-size: 12px;
+  fill: var(--fg);
+}
+rect.premium,
+.key.premium {
+  fill: #005ea2;
+  background: #005ea2;
+}
+rect.drug,
+.key.drug {
+  fill: #2e8540;
+  background: #2e8540;
+}
+rect.medical,
+.key.medical {
+  fill: #e5a000;
+  background: #e5a000;
+}
+line.worst {
+  stroke: #b50909;
+  stroke-width: 3;
+}
+.key {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-left: 10px;
+}
+.key.worst {
+  background: #b50909;
+  width: 4px;
+}
+.estimate-note {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-top: 12px;
+}
+.disclaimer {
+  font-size: 0.9rem;
+  border-top: 2px solid var(--border);
+  margin-top: 24px;
+  padding-top: 8px;
+  color: var(--muted);
+}
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.dialog {
+  max-width: 560px;
+  width: 100%;
+}
+.dialog textarea {
+  width: 100%;
+}
+.outcome select {
+  margin: 4px 4px 4px 0;
+}
+.sent {
+  color: var(--ok);
+}
+.empty {
+  color: var(--muted);
+}

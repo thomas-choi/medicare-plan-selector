@@ -91,6 +91,8 @@ def config(state: AppState = Depends(st)) -> dict[str, Any]:
         "limits": {"message_chars": s.max_message_chars, "drugs": s.max_drugs, "providers": s.max_providers},
         "disclaimer": DISCLAIMER,
         "estimate_disclaimer": ESTIMATE_DISCLAIMER,
+        "checklist": T.CHECKLIST,
+        "allowed_link_hosts": ["medicare.gov", "cms.gov", "shiphelp.org"],
         "app_version": s.app_version,
     }
 
