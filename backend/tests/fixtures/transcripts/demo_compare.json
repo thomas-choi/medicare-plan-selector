@@ -1,0 +1,9 @@
+{
+  "description": "Hand-written fake-LLM transcript: user asks for a comparison; model calls compare_plans, then answers with tool numbers. Placeholders {TOP1_KEY}/{TOP1_TOTAL} are filled from the tool result at replay time.",
+  "user": "I take two drugs. Which plans should I look at?",
+  "steps": [
+    {"tool_calls": [{"id": "c1", "name": "compare_plans", "arguments": {"limit": 3}}]},
+    {"text": "Your top plan by estimated yearly cost is {TOP1_KEY} at about {TOP1_TOTAL}. These are estimates; use the checklist to confirm in Medicare Plan Finder."}
+  ],
+  "expect": {"validation": "ok", "tools": ["compare_plans"]}
+}

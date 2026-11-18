@@ -75,3 +75,27 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
 - Tests: 44 table-driven unit cases (copay generic, deductible crossover, TrOOP mid-year, insulin, non-formulary,
   30/60/90-day and mail, missing price → range, MOOP, zero drugs, rounding, PDP + Part B, carrier-name permutation,
   SNP/path/must-have filters) and golden cost JSON on the Maricopa fixtures, with H0028_028_0 checked by hand.
+
+## WP3 — LLM provider layer, tools, validator, policy, prompts (2026-11-17)
+- `selector/agent/providers/`: one `ChatProvider.complete(system, messages, tools)` interface; adapters
+  `anthropic` (Messages API tool use), `openai_compat` (Chat Completions function calling, `LLM_BASE_URL`), `xai`
+  (the compat adapter with `https://api.x.ai/v1`, `XAI_API_KEY`, `max_completion_tokens`; checked against
+  docs.x.ai on 2026-11-17) and `fake` (scripted for tests, rule-based demo for keyless local runs). Plain httpx, so
+  tests mock the HTTP layer; no SDK, no network, no keys in tests. Timeouts/429/5xx → `ProviderUnavailable` → the
+  optional `LLM_FALLBACK_PROVIDER`; never on validator failure. Blank `LLM_PROVIDER` = no-LLM mode.
+- The provider was never picked (due Nov 16): both adapters ship; DESIGN §6.4's `LLM_PROVIDER=anthropic` is the
+  documented production default and `.env.example` uses `fake` so a fresh checkout runs without keys.
+- `tools.py`: the ten DESIGN §6.2 tools with pydantic argument models (`extra="forbid"`, ≤5 plans), injected
+  `ToolContext` (no session id in any schema), every output with `src_ref[]`, `plan_year`, `data_vintage`.
+  `lookups.py`: RxNav and NPPES clients (name only, in-memory LRU cache, 1 req/s).
+- `validator.py`: dollar amounts, percentages, star ratings and plan IDs must come from tool output (formatting and
+  whole-dollar rounding tolerated); `policy.py`: enrollment promises, network claims, medical advice, discouraging
+  calls; sanitizer strips HTML/images and off-allowlist links (medicare.gov, cms.gov, shiphelp.org).
+- `orchestrator.py`: tool loop (≤6 rounds, ≤4 calls each), user text wrapped as data, one validator correction round
+  then a deterministic summary; `budget_check`/`usage_sink` hooks for WP5. `prompts/system_v1.md`,
+  `PROMPT_VERSION=v1`. `selector/profile.py`: the intake profile with DESIGN §8.2 limits.
+- Tests: provider contract tests (request/response shapes, error classes, key never in errors), tool schema snapshot
+  (`tests/fixtures/tool_schemas.json`), no session id / sponsor fields, every tool output carries `src_ref`, fake
+  transcript replay (`tests/fixtures/transcripts/`), validator rejects an injected fake premium, provider fallback,
+  budget stop, and the red-team set (prompt injection, cross-session, "rank X first", HTML/markdown/link injection,
+  over-long input, network claim).

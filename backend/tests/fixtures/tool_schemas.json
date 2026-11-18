@@ -1,0 +1,369 @@
+{
+  "compare_plans": {
+    "description": "Rank all plans in the user's county and return the top N (max 5) with the checklist.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 3,
+          "maximum": 5,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "estimate_costs": {
+    "description": "Estimated yearly costs for up to 5 plans in the user's county.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "plan_keys": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 5,
+          "minItems": 1,
+          "title": "Plan Keys",
+          "type": "array"
+        }
+      },
+      "required": [
+        "plan_keys"
+      ],
+      "type": "object"
+    }
+  },
+  "explain_plan": {
+    "description": "Details for one plan: costs, benefits, drug coverage.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "plan_key": {
+          "pattern": "^[HRSE]\\d{4}_\\d{3}_\\d{1,3}$",
+          "title": "Plan Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan_key"
+      ],
+      "type": "object"
+    }
+  },
+  "filter_plans": {
+    "description": "Change the user's path, must-haves, weights or utilization and re-rank.",
+    "parameters": {
+      "$defs": {
+        "MustHavesIn": {
+          "additionalProperties": false,
+          "properties": {
+            "all_drugs_covered": {
+              "default": false,
+              "title": "All Drugs Covered",
+              "type": "boolean"
+            },
+            "max_monthly_premium_cents": {
+              "anyOf": [
+                {
+                  "maximum": 10000000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Max Monthly Premium Cents"
+            },
+            "max_moop_cents": {
+              "anyOf": [
+                {
+                  "maximum": 100000000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Max Moop Cents"
+            },
+            "min_stars": {
+              "anyOf": [
+                {
+                  "maximum": 5,
+                  "minimum": 1,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Min Stars"
+            },
+            "plan_types": {
+              "items": {
+                "enum": [
+                  "HMO",
+                  "PPO",
+                  "PFFS",
+                  "MSA",
+                  "POS"
+                ],
+                "type": "string"
+              },
+              "maxItems": 5,
+              "title": "Plan Types",
+              "type": "array"
+            }
+          },
+          "title": "MustHavesIn",
+          "type": "object"
+        },
+        "WeightsIn": {
+          "additionalProperties": false,
+          "properties": {
+            "must_have_fit": {
+              "default": 0.1,
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Must Have Fit",
+              "type": "number"
+            },
+            "stars": {
+              "default": 0.1,
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Stars",
+              "type": "number"
+            },
+            "total_cost": {
+              "default": 0.6,
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Total Cost",
+              "type": "number"
+            },
+            "worst_case": {
+              "default": 0.2,
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Worst Case",
+              "type": "number"
+            }
+          },
+          "title": "WeightsIn",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "must_haves": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MustHavesIn"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "path": {
+          "anyOf": [
+            {
+              "enum": [
+                "ma",
+                "original",
+                "both"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "utilization": {
+          "anyOf": [
+            {
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Utilization"
+        },
+        "weights": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WeightsIn"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object"
+    }
+  },
+  "lookup_provider": {
+    "description": "Find a doctor's NPI. Network status is never known: tell the user to call the plan.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "first_name": {
+          "default": "",
+          "maxLength": 60,
+          "title": "First Name",
+          "type": "string"
+        },
+        "last_name": {
+          "maxLength": 60,
+          "minLength": 2,
+          "title": "Last Name",
+          "type": "string"
+        },
+        "state": {
+          "default": "",
+          "pattern": "^([A-Z]{2})?$",
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "last_name"
+      ],
+      "type": "object"
+    }
+  },
+  "record_feedback": {
+    "description": "Record a thumbs up/down the user gave a recommended plan.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "plan_key": {
+          "pattern": "^[HRSE]\\d{4}_\\d{3}_\\d{1,3}$",
+          "title": "Plan Key",
+          "type": "string"
+        },
+        "thumbs": {
+          "enum": [
+            1,
+            -1
+          ],
+          "title": "Thumbs",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "plan_key",
+        "thumbs"
+      ],
+      "type": "object"
+    }
+  },
+  "resolve_drug": {
+    "description": "Find RxNorm drug candidates for a drug name.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Drug name as the user wrote it",
+          "maxLength": 80,
+          "minLength": 2,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    }
+  },
+  "resolve_location": {
+    "description": "Map a ZIP code to its county or counties (HUD crosswalk).",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "zip": {
+          "description": "5-digit ZIP code",
+          "pattern": "^\\d{5}$",
+          "title": "Zip",
+          "type": "string"
+        }
+      },
+      "required": [
+        "zip"
+      ],
+      "type": "object"
+    }
+  },
+  "search_plans": {
+    "description": "List every plan offered in the user's county with basic facts.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "default": "all",
+          "enum": [
+            "all",
+            "ma",
+            "pdp"
+          ],
+          "title": "Category",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "update_canvas": {
+    "description": "Switch the comparison canvas tab or the selected plans.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "plan_keys": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 5,
+          "title": "Plan Keys",
+          "type": "array"
+        },
+        "tab": {
+          "enum": [
+            "table",
+            "chart",
+            "side_by_side",
+            "checklist"
+          ],
+          "title": "Tab",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tab"
+      ],
+      "type": "object"
+    }
+  }
+}
