@@ -345,6 +345,9 @@ feedback = Table(
     Column("created_at", DateTime, nullable=False),
     Column("triage_status", String(16), nullable=False, default="new"),
     Column("triage_note", String(512)),
+    # 0003: outcome confidence (1-5) and bug context (page, view state, versions, last tool-call ids; no content).
+    Column("confidence", SmallInteger),
+    Column("context_json", JSON),
     Index(None, "kind", "created_at"),
 )
 

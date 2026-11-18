@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from selector import __version__
 from selector.agent.providers import ChatProvider
+from selector.api import feedback_routes
 from selector.api.logging_mw import AccessLogMiddleware, configure_logging
 from selector.api.routes import router
 from selector.api.state import AppState, build_state
@@ -41,6 +42,8 @@ def create_app(
         return {"status": "ok", "version": __version__}
 
     app.include_router(router)
+    app.include_router(feedback_routes.router)
+    app.state.msp.extras.setdefault("feedback_hook", feedback_routes.agent_feedback_hook)
     return app
 
 

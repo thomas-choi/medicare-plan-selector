@@ -130,3 +130,20 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
   canvas for the feedback widgets.
 - `deploy/nginx/ratelimit.conf`: `limit_req` 30 r/min on `/api`, 6 r/min on `/api/chat`, `limit_conn` for SSE.
 - New setting `IP_HASH_SECRET` (optional).
+
+## WP6 — Feedback and admin (2026-11-17)
+- `POST /api/feedback`: `recommendation_rating`, `session_outcome`, `general`, `bug`. Saved: linked rows (rating
+  anchored to the session's `recommendation` row, by id or plan key), free text → `selector/redact.py` →
+  `text_redacted`; raw text AES-GCM encrypted only with "Include my details". No-save: ratings/outcomes only bump
+  `feedback_counter` (text dropped); the "Send a message to the team" form (`to_team: true`) stores one redacted row
+  with `session_id = NULL`, `mode = 'nosave'` and never raw text. The agent's `record_feedback` tool uses the same
+  path.
+- Migration `0003`: `feedback.confidence` (outcome card) and `feedback.context_json` (bug page/view state and last
+  tool-call ids, never message content; also `enrolled: planned`).
+- Redactor: drug lexicon + generic-name stems + the user's own drug/doctor names, "Dr." names, emails, phones,
+  dates, ZIPs, NPI-like and long numbers, MBI and SSN patterns.
+- Admin API behind `X-Admin-Gate` (constant-time compare; blank `ADMIN_GATE_SECRET` = off): list with filters,
+  CSV/JSON export of redacted fields only, triage (`new → accepted → test-added → closed`), summary (thumbs rate,
+  stars, outcome distribution, rows by kind/status, LLM usage by mode); every action in `admin_audit`.
+- Tests: redactor cases, N1 (row counts + `CHECKSUM TABLE` of every user table unchanged across the full No-save
+  flow; counters hold no session/IP/PHI), N9 backend part, Saved rows/opt-in/unlink on delete, agent tool, admin.
