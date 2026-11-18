@@ -1,0 +1,98 @@
+# Host nginx for med.thomas-choi.com (DESIGN §10). Render with:
+#   envsubst '${MED_PUBLIC_PORT} ${MSP_WEB_PORT} ${ADMIN_GATE_SECRET} ${ADMIN_ALLOW_CIDR}' \
+#     < deploy/nginx/med.conf.template | sudo tee /etc/nginx/sites-available/med.conf >/dev/null
+# and put deploy/nginx/ratelimit.conf in /etc/nginx/conf.d/ (http context). The rendered file contains the admin
+# gate secret: keep it root-only (chmod 600) and never commit it.
+
+# Access log without query strings, user agents or full IPs (DESIGN §8.1): IPv4 /24 and IPv6 /48 prefixes only.
+map $remote_addr $msp_ip_prefix {
+    ~^(?<p4>\d+\.\d+\.\d+)\.\d+$        $p4.0/24;
+    ~^(?<p6>[0-9a-fA-F]*:[0-9a-fA-F]*:[0-9a-fA-F]*):  $p6::/48;
+    default                              unknown;
+}
+log_format msp_privacy '$time_iso8601 $msp_ip_prefix "$request_method $uri" $status $body_bytes_sent $request_time';
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name med.thomas-choi.com;
+    access_log /var/log/nginx/med.access.log msp_privacy;
+    location /.well-known/acme-challenge/ { root /var/www/letsencrypt; }
+    location / { return 301 https://$host$request_uri; }
+}
+
+server {
+    listen ${MED_PUBLIC_PORT} ssl;
+    listen [::]:${MED_PUBLIC_PORT} ssl;
+    http2 on;
+    server_name med.thomas-choi.com;
+    server_tokens off;
+
+    ssl_certificate     /etc/letsencrypt/live/med.thomas-choi.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/med.thomas-choi.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:msp_ssl:10m;
+
+    access_log /var/log/nginx/med.access.log msp_privacy;
+    error_log  /var/log/nginx/med.error.log warn;
+    client_max_body_size 64k;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+    add_header X-Frame-Options DENY always;
+
+    # Common proxy settings. The client address is overwritten (not appended) so it can't be spoofed, and any
+    # client-sent admin gate header is dropped.
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Admin-Gate "";
+    proxy_set_header X-Admin-User "";
+
+    location = /api/chat {
+        limit_req zone=msp_chat burst=3 nodelay;
+        limit_conn msp_conn 4;
+        proxy_buffering off;
+        proxy_read_timeout 180s;
+        proxy_pass http://127.0.0.1:${MSP_WEB_PORT};
+    }
+
+    location /api/admin/ {
+        satisfy all;
+        allow ${ADMIN_ALLOW_CIDR};
+        deny all;
+        auth_basic "admin";
+        auth_basic_user_file /etc/nginx/med-admin.htpasswd;
+        # proxy_set_header in a location replaces (does not extend) the server-level list: repeat them all.
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Admin-Gate "${ADMIN_GATE_SECRET}";
+        proxy_set_header X-Admin-User $remote_user;
+        proxy_pass http://127.0.0.1:${MSP_WEB_PORT};
+    }
+
+    location = /admin {
+        satisfy all;
+        allow ${ADMIN_ALLOW_CIDR};
+        deny all;
+        auth_basic "admin";
+        auth_basic_user_file /etc/nginx/med-admin.htpasswd;
+        proxy_pass http://127.0.0.1:${MSP_WEB_PORT};
+    }
+
+    location /api/ {
+        limit_req zone=msp_api burst=20 nodelay;
+        limit_conn msp_conn 20;
+        proxy_read_timeout 60s;
+        proxy_pass http://127.0.0.1:${MSP_WEB_PORT};
+    }
+
+    location / {
+        limit_req zone=msp_api burst=40 nodelay;
+        proxy_pass http://127.0.0.1:${MSP_WEB_PORT};
+    }
+}

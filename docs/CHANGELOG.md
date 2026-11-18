@@ -166,3 +166,17 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
   storage empty, renewed-session notice, no-LLM notice, markdown safety, table/chart/side-by-side, export, SSE
   parser, feedback dialog in both modes.
 - `/api/config` now also returns the checklist and the link allowlist.
+
+## WP8 — Deploy artifacts (2026-11-17)
+- Web image (`frontend/Dockerfile`, `frontend/nginx.conf`): Node 22 build → unprivileged nginx on :8080 serving the
+  SPA (strict CSP, no-store HTML) and proxying `/api` (SSE unbuffered for `/api/chat`). Dev compose `web` service on
+  `127.0.0.1:${MSP_WEB_PORT:-8080}`; API healthcheck; API and web containers read-only with tmpfs `/tmp`.
+- `docker-compose.prod.yml` (standalone): MySQL on a named volume (localhost-only port for migrate/ingest), Redis
+  without persistence and with `REDIS_PASSWORD`, API, nightly `purge` (`purge-loop` entrypoint command), web;
+  secrets only from the server `.env`; `COMPOSE_DATABASE_URL`/`COMPOSE_REDIS_URL` required.
+- `deploy/nginx/med.conf.template` (TLS, HSTS, security headers, rate limits, privacy access log with IP prefixes and
+  no query strings, `X-Forwarded-For` overwritten, `/admin` + `/api/admin/` behind allowlist + basic auth + gate
+  header) and `deploy/README.md` (operator runbook). Both nginx configs pass `nginx -t`.
+- Makefile: `purge`, `api-dev`, `web-dev`, `app-up/down/logs`, `smoke` (`scripts/smoke.sh`), `prod-*`.
+- README: exact test-run steps for a fresh Ubuntu 22.04 machine; `.env.example` finalized (dev-friendly
+  `MAX_SESSIONS_PER_IP_PER_DAY=200`, production value 5 noted).

@@ -8,160 +8,127 @@ CMS plan data for your county to narrow the list to a cited top 3, with estimate
 has no accounts, no commissions and no sponsored rankings. The backend is Python (FastAPI, SQLAlchemy, Alembic) on
 MySQL 8.4 and Redis 7.4; the frontend is React + TypeScript + Vite.
 
-> **Status:** work in progress on `feat/mvp`. Scaffold (WP0) and CMS data ingest (WP1) are done; the cost engine,
-> chat agent and UI are being built (see [docs/CHANGELOG.md](docs/CHANGELOG.md)). The API currently serves
-> `/api/health` only.
+> **Status:** MVP on branch `feat/mvp-wp2-8` (WP0–WP8; see [docs/CHANGELOG.md](docs/CHANGELOG.md)). Runs end to
+> end locally with committed sample data for Maricopa County, AZ and a keyless demo assistant (`LLM_PROVIDER=fake`).
 
-## Quick start (run the UI locally)
-**What you'll see today:** the UI is still a skeleton. It shows the page title and the disclaimer; the chat, plan
-table and consent screen arrive in WP7. The API answers only `GET /api/health`.
+## Test run on a fresh machine (Ubuntu 22.04, e.g. ml3090)
+Copy-paste friendly. Nothing here needs an API key; nothing is pushed or deployed.
 
-1. Install Python 3.13, [uv](https://docs.astral.sh/uv/), Node.js 20 + npm and Docker with Compose v2
-   (details in [Prerequisites](#prerequisites)).
-2. Clone and install:
-   ```bash
-   git clone https://github.com/thomas-choi/medicare-plan-selector.git
-   cd medicare-plan-selector
-   git checkout feat/mvp
-   (cd backend && uv sync --frozen)
-   (cd frontend && npm ci)
-   ```
-3. Start MySQL and Redis, create the schema and (optionally) load the 2027 CMS plan data. These need the
-   environment from [Setup](#setup) exported in your shell:
-   ```bash
-   make stack-up                                            # MySQL 127.0.0.1:3307, Redis 127.0.0.1:6380
-   make migrate
-   (cd backend && uv run selector ingest --year 2027)       # optional today; see Data ingest
-   ```
-   At this stage the API and UI don't read the database yet, so you can skip this step to just see the UI.
-4. Start the API on http://127.0.0.1:8000 (terminal 1):
-   ```bash
-   cd backend
-   uv run uvicorn --factory selector.api.main:app_factory --host 127.0.0.1 --port 8000
-   ```
-   It needs no `.env` today; if you exported one, `LLM_PRICE_IN_PER_MTOK_USD` and `LLM_PRICE_OUT_PER_MTOK_USD`
-   must be numbers. Check it with `curl http://127.0.0.1:8000/api/health`. Or run it in Docker instead:
-   `docker compose --profile app up -d --build api` (same port).
-5. Start the UI (terminal 2) and open **http://localhost:5173/**. Vite proxies `/api` to port 8000.
-   ```bash
-   cd frontend
-   npm run dev
-   ```
-   Production-style alternative: `npm run build && npx vite preview`, then open http://localhost:4173/.
-6. Stop: press `Ctrl+C` in both terminals, then `docker compose --profile app down` to stop the containers
-   (this also wipes the dev database and Redis, which run on tmpfs).
-
-## Prerequisites
-- Python 3.13 and [uv](https://docs.astral.sh/uv/) (CI pins uv 0.12.21)
-- Node.js 20 and npm
-- Docker with Compose v2
-- Free local ports: **3307** (MySQL), **6380** (Redis), **8000** (API), **5173** (Vite dev server).
-  Compose reads `MSP_MYSQL_PORT`, `MSP_REDIS_PORT` and `MSP_API_PORT` if you need different ports.
-
-## Setup
+**0. Prerequisites (once).** Docker Engine with the Compose v2 plugin, `make`, `git`, `curl`, `python3`, Node.js 20+
+and [uv](https://docs.astral.sh/uv/) (uv downloads Python 3.13 itself):
 ```bash
-git clone https://github.com/thomas-choi/medicare-plan-selector.git
+sudo apt-get update && sudo apt-get install -y make git curl python3 ca-certificates
+docker --version && docker compose version          # Docker Engine + compose plugin (docs.docker.com/engine/install/ubuntu)
+curl -LsSf https://astral.sh/uv/install.sh | sh     # then open a new shell
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs
+```
+Free local ports: 3307 (MySQL), 6380 (Redis), 8000 (API), 8080 (web UI), 5173 (Vite, optional).
+
+**1. Get the branch and install.**
+```bash
+git clone https://github.com/thomas-choi/medicare-plan-selector.git   # or: cd medicare-plan-selector && git fetch
 cd medicare-plan-selector
-cp .env.example .env        # never commit .env; keep it chmod 600
+git checkout feat/mvp-wp2-8
+cp .env.example .env && chmod 600 .env     # works as-is for local testing (LLM_PROVIDER=fake, dev passwords)
+(cd backend && uv sync --frozen)
+(cd frontend && npm ci)
 ```
 
-Fill in `.env` (every value in `.env.example` is a placeholder):
+**2. Run the whole regression suite** (lint + every backend test incl. No-save N1–N9 backend parts + Vitest).
+It starts MySQL and Redis in Docker; tests use throwaway `msp_test_*` databases and never call an LLM:
+```bash
+make test
+```
+Expected: ruff/mypy/tsc/eslint/prettier clean, ~290 backend tests passed, ~20 Vitest tests passed.
+(The tests wipe `eph:*` and `quota:*` keys in the dev Redis, so don't run them while you test the UI.)
+
+**3. Load dev data and start the app in Docker.**
+```bash
+make stack-up        # MySQL 127.0.0.1:3307 + Redis 127.0.0.1:6380 (both tmpfs: data is gone after stack-down)
+make ingest-dev      # schema + grants + committed CMS sample fixtures (Maricopa/Pinal, AZ) + dev ZIP→county rows
+make app-up          # builds and starts the API and the web UI → http://127.0.0.1:8080
+make smoke           # health, config, No-save session, ZIP lookups, Maricopa compare with the golden H0028_028_0 row, chat, erase
+```
+Open **http://127.0.0.1:8080** (from another computer: `ssh -L 8080:127.0.0.1:8080 ml3090`, then open the same URL
+locally). Try: Start (No-save) → ZIP `85004` → Find county → drug "metformin" with RxCUI `197361` → Compare plans →
+ask the assistant "Explain H0028_028_0" → Cost chart / Side-by-side / Checklist → Download comparison → End
+session & erase. ZIP `85142` shows the split-county picker. Drug *search* calls RxNav (internet); the RxCUI field
+works offline. The dev sample data only covers Maricopa and Pinal counties.
+
+**4. Optional variations** (edit `.env`, then `make app-up` again to recreate the containers):
+- **Saved mode:** set `PROFILE_ENC_KEY` (command in `.env.example`); the consent screen then offers "Save for 30 days"
+  and the header shows "Delete my data".
+- **Real assistant:** `LLM_PROVIDER=anthropic`, `LLM_MODEL=<model id>`, `ANTHROPIC_API_KEY=...` — or
+  `LLM_PROVIDER=xai`, `LLM_MODEL=<model id>`, `XAI_API_KEY=...`. Set `LLM_PRICE_*` so the daily budget counts.
+  Blank `LLM_PROVIDER` = no-LLM mode (form + table only).
+- **Admin page:** set `ADMIN_GATE_SECRET`, then `curl -H "X-Admin-Gate: <secret>" http://127.0.0.1:8080/api/admin/summary`.
+  In production nginx adds that header after basic auth; locally `/admin` shows "admin gate" without it.
+- **Real CMS 2027 data:** `make ingest` (downloads several hundred MB the first time; all counties).
+- **Host-side dev loop instead of Docker:** `make api-dev` (API on :8000 with reload) and `make web-dev`
+  (Vite on http://localhost:5173, proxies `/api`); `make smoke SMOKE_URL=http://127.0.0.1:8000` checks the API.
+
+**5. Stop.** `make app-down` (or `make stack-down`); this also wipes the tmpfs databases.
+
+## Make targets
+| Target | What it does |
+|---|---|
+| `make stack-up` / `make stack-down` | dev MySQL + Redis (tmpfs, ports 3307/6380) / stop everything |
+| `make migrate` | Alembic to head + role grants (uses `MIGRATOR_DATABASE_URL`) |
+| `make ingest-dev` | migrate + committed CMS fixtures + dev ZIP→county rows (no network) |
+| `make ingest` | migrate + real CMS 2027 ingest (network) |
+| `make app-up` / `app-down` / `app-logs` | API + web containers (`${DOCKER_USER}/medicare-plan-selector[-web]:${IMAGE_TAG}`) |
+| `make api-dev` / `make web-dev` | host-side API (:8000) / Vite dev server (:5173) |
+| `make smoke` | end-to-end check of a running app (`SMOKE_URL`, default http://127.0.0.1:8080) |
+| `make test` / `test-fast` / `lint` | full gate / unit tests without Docker / linters |
+| `make purge` | retention purge (Saved sessions idle > `RETENTION_DAYS`, feedback > `FEEDBACK_RETENTION_DAYS`) |
+| `make prod-config` / `prod-build` / `prod-up` / `prod-down` / `prod-logs` | production compose; see [deploy/README.md](deploy/README.md) |
+
+## Configuration (`.env`)
+`.env` lives in the repo root (never committed, `chmod 600`). The Makefile and `selector` read it; blank numeric
+values (e.g. `LLM_PRICE_IN_PER_MTOK_USD=`) mean "use the default". Host-side commands use `127.0.0.1:3307`/`:6380`;
+containers use the service names (`mysql:3306`, `redis:6379`), which the dev compose sets for you (override with
+`COMPOSE_DATABASE_URL` / `COMPOSE_REDIS_URL`; production requires them). Every key is documented in
+[.env.example](.env.example). The most important:
 
 | Variable | Purpose |
 |---|---|
-| `DATABASE_URL` | MySQL URL for the API role `msp_api` (plan data read-only, user tables read-write) |
-| `INGEST_DATABASE_URL` | MySQL URL for the ingest role `msp_ingest` (plan tables read-write) |
-| `MIGRATOR_DATABASE_URL` | MySQL URL for the migration role `msp_migrator` (schema changes and grants) |
-| `REDIS_URL`, `REDIS_PASSWORD` | Redis for No-save sessions and quota counters |
+| `DATABASE_URL`, `INGEST_DATABASE_URL`, `MIGRATOR_DATABASE_URL`, `REDIS_URL` | three MySQL roles (API read-only on plan data) and Redis |
 | `DEFAULT_SESSION_MODE` | `nosave` (default) or `saved` |
-| `RETENTION_DAYS`, `FEEDBACK_RETENTION_DAYS` | How long Saved sessions and feedback are kept |
-| `EPHEMERAL_IDLE_MINUTES`, `EPHEMERAL_MAX_HOURS`, `EPHEMERAL_END_GRACE_SECONDS` | No-save session lifetime |
-| `PROFILE_ENC_KEY`, `PROFILE_KEY_VERSION` | Encryption key (and its version) for Saved-mode profiles and chat |
-| `COOKIE_SECURE` | `true` in production; `false` only for plain-HTTP local testing |
-| `LLM_PROVIDER`, `LLM_MODEL`, `LLM_BASE_URL` | Chat model: `anthropic`, `openai_compat` (set `LLM_BASE_URL`) or `fake` (tests, no network) |
-| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENAI_COMPAT_API_KEY` | Key for the chosen provider only |
-| `LLM_FALLBACK_PROVIDER`, `LLM_FALLBACK_MODEL` | Optional fallback on provider errors or timeouts |
-| `LLM_PRICE_IN_PER_MTOK_USD`, `LLM_PRICE_OUT_PER_MTOK_USD` | Model prices used for the daily budget. **Must be numbers** (use `0` with `fake`); blank values fail to load |
-| `LLM_DAILY_BUDGET_USD`, `MAX_TURNS_PER_SESSION`, `MAX_TOKENS_PER_SESSION`, `MAX_SESSIONS_PER_IP_PER_DAY`, `CAPTCHA_PROVIDER` | Quotas and abuse controls |
-| `HUD_API_TOKEN`, `HUD_API_BASE` | HUD USPS ZIP→county API. Optional for development and tests; needed for live ZIP lookups and `selector hud preload`. See [docs/design/HUD-API-SETUP.md](docs/design/HUD-API-SETUP.md), which also describes the HUD quarterly-file fallback |
-| `PLAN_YEAR`, `MED_PUBLIC_PORT` | Active plan year (2027) and the public HTTPS port for deployment |
-
-Generate the encryption key (32 random bytes, base64):
-```bash
-python3 -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())"
-```
-
-**Running `selector` commands on your machine against the local stack:** `.env.example` uses the container host
-names (`mysql:3306`, `redis:6379`). For host-side commands point the URLs at `127.0.0.1:3307` and `127.0.0.1:6380`
-and use the local-only dev passwords from `deploy/mysql/01-roles.sql` and `docker-compose.yml`. Settings are read
-from the environment (or from a `.env` in the current directory, which is `backend/` for the Makefile targets), so
-export them first:
-```bash
-set -a; . ./.env; set +a
-```
-
-## Build
-```bash
-cd backend && uv sync --frozen && cd ..                 # backend + dev tools from uv.lock
-cd frontend && npm ci && npm run build && cd ..         # frontend into frontend/dist/
-docker compose --profile app build api                  # API image (backend/Dockerfile)
-```
-
-## Start and stop
-The [Quick start](#quick-start-run-the-ui-locally) has the full sequence. Reference:
-
-| Task | Command |
-|---|---|
-| Start MySQL + Redis | `make stack-up` |
-| Schema + grants | `make migrate` |
-| API on the host | `cd backend && uv run uvicorn --factory selector.api.main:app_factory --host 127.0.0.1 --port 8000` |
-| API in Docker | `docker compose --profile app up -d api` (http://127.0.0.1:8000; runs `selector ephemeral-flush` first, then 2 workers) |
-| UI (dev) | `cd frontend && npm run dev` → http://localhost:5173/ |
-| UI (built) | `cd frontend && npm run build && npx vite preview` → http://localhost:4173/ |
-| Stop containers | `docker compose --profile app down` (`make stack-down` runs `docker compose down`) |
-
-The dev stack keeps MySQL and Redis on tmpfs: **all data is lost when the containers stop**, so re-run
-`make migrate` and the ingest after every restart. Redis runs with persistence off by design.
+| `PROFILE_ENC_KEY` | enables Saved mode (AES-GCM at rest); blank = No-save only |
+| `LLM_PROVIDER`, `LLM_MODEL` | `anthropic` (design default), `xai`, `openai_compat`, `fake` (keyless demo) or blank (no-LLM) |
+| `ANTHROPIC_API_KEY`, `XAI_API_KEY`, `OPENAI_COMPAT_API_KEY` | key for the chosen provider only |
+| `LLM_DAILY_BUDGET_USD`, `LLM_PRICE_*`, `MAX_*` | cost cap and quotas (DESIGN §8.2) |
+| `ADMIN_GATE_SECRET` | header nginx adds for `/admin`; blank = admin API off |
+| `HUD_API_TOKEN` | live ZIP→county lookups (optional; fallback `selector hud load-file`, see [HUD setup](docs/design/HUD-API-SETUP.md)) |
+| `DOCKER_USER`, `IMAGE_TAG`, `APP_UID`, `APP_GID` | image names and the runtime user inside the images |
 
 ## Data ingest (CMS plan year 2027)
-After `make stack-up` and `make migrate`, with the environment exported:
 ```bash
-cd backend
-uv run selector ingest --year 2027              # download, check sha256 against sources.lock, load, validate
-uv run selector ingest --year 2027 --offline    # reuse files already in data/raw/2027 (no network)
+make ingest                                     # = migrate + selector ingest --year 2027
+(cd backend && uv run selector ingest --year 2027 --offline)    # reuse files already in data/raw/2027
 ```
 - Sources are listed in `sources/2027.yaml`; raw files go to the git-ignored `data/raw/2027/`. The large Part D
   file is range-read, so only the needed members are downloaded.
-- The load runs in one transaction per plan year and rolls back if validation fails, including the golden-row
-  check for plan `H0028_028_0` in Maricopa County, AZ.
+- One transaction per plan year; it rolls back if validation fails, including the golden-row check for plan
+  `H0028_028_0` in Maricopa County, AZ.
 - If CMS republishes a file and its sha256 no longer matches `sources.lock`, the ingest stops. Review the change,
   then re-run with `--accept-new` and commit the updated `sources.lock`.
-- The first run is network-bound; `--offline` re-runs are much faster. Re-run the ingest after each stack restart.
-
-## Tests
-```bash
-make test-fast      # backend unit tests (no Docker) + frontend Vitest
-make test           # full gate: lint (ruff, mypy, tsc, eslint, prettier) + every backend test + Vitest; starts the stack
-make lint           # linters only
-make precommit      # pre-commit: gitleaks, forbidden-file check, linters
-```
-Tests marked `infra` need the compose MySQL/Redis stack; `make test` brings it up. Tests use their own throwaway
-databases and never need a real `.env` or LLM key. CI (`.github/workflows/ci.yml`) runs `make test` with
-`LLM_PROVIDER=fake`.
+- ZIP→county: `HUD_API_TOKEN` + `selector hud preload --state AZ`, or without a token
+  `selector hud load-file ZIP_COUNTY_<MMYYYY>.xlsx --state AZ`; unknown ZIPs fall back to a state/county picker.
 
 ## Session modes
 - **No-save (default):** your profile and chat live only in Redis, encrypted with a per-session key held in your
-  browser cookie, and are wiped when the session ends or expires. Nothing is written to MySQL except anonymous
-  counters and any message you choose to send to the team.
-- **Saved:** opt in on the consent screen to keep your session for `RETENTION_DAYS`, with the profile and chat
-  encrypted at rest. You can delete your data at any time.
+  browser cookie, and are wiped when you end the session, after 30 minutes idle, after 4 hours at most, or when the
+  API restarts. Nothing is written to MySQL except anonymous counters and any message you choose to send to the team.
+- **Saved:** opt in on the consent screen to keep your session for `RETENTION_DAYS`, with the ZIP, drugs, doctors
+  and chat encrypted at rest. "Delete my data" removes it at any time.
 
-Details: [DESIGN §8.5](docs/design/DESIGN.md). (The session UI is part of the MVP work still in progress.)
+Details: [DESIGN §8.5](docs/design/DESIGN.md).
 
 ## Docs
 - [Design v0.3](docs/design/DESIGN.md) and [design index](docs/design/README.md)
 - [Implementation plan](docs/design/IMPLEMENTATION-PLAN.md) and [open questions](docs/design/OPEN-QUESTIONS.md)
-- [HUD API setup](docs/design/HUD-API-SETUP.md)
+- [HUD API setup](docs/design/HUD-API-SETUP.md) · [Deployment](deploy/README.md)
 - [Data sources and attribution](docs/DATA-SOURCES.md)
 - [Security](docs/SECURITY.md) · [Contributing](docs/CONTRIBUTING.md) · [Changelog](docs/CHANGELOG.md)
 

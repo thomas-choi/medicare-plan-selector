@@ -1,0 +1,104 @@
+# Production stack for med.thomas-choi.com (DESIGN §10). Standalone file (not an override of the dev compose):
+#   docker compose -f docker-compose.prod.yml up -d
+# Secrets come from the server .env (mode 600, never committed): MYSQL_ROOT_PASSWORD, REDIS_PASSWORD,
+# COMPOSE_DATABASE_URL, COMPOSE_REDIS_URL, PROFILE_ENC_KEY, ADMIN_GATE_SECRET, LLM keys. See deploy/README.md.
+# Only the web container and MySQL are published, both on 127.0.0.1: the host nginx terminates TLS and proxies to
+# the web container; MySQL's localhost port is for host-side `make migrate` / `make ingest`.
+name: msp-prod
+
+x-app: &app
+  image: ${DOCKER_USER:-local}/medicare-plan-selector:${IMAGE_TAG:-latest}
+  build:
+    context: ./backend
+    args:
+      APP_UID: ${APP_UID:-10001}
+      APP_GID: ${APP_GID:-10001}
+  env_file:
+    - path: .env
+      required: true
+  environment:
+    DATABASE_URL: ${COMPOSE_DATABASE_URL:?set COMPOSE_DATABASE_URL in .env (mysql:3306)}
+    REDIS_URL: ${COMPOSE_REDIS_URL:?set COMPOSE_REDIS_URL in .env (redis:6379)}
+    INGEST_DATABASE_URL: ""
+    MIGRATOR_DATABASE_URL: ""
+  depends_on:
+    mysql: { condition: service_healthy }
+    redis: { condition: service_healthy }
+  read_only: true
+  tmpfs:
+    - /tmp
+  ulimits:
+    core: 0
+  restart: unless-stopped
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: msp
+    ports:
+      - "127.0.0.1:${MSP_MYSQL_PORT:-3307}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4
+    # No persistence (DESIGN §8.5): no RDB, no AOF, /data on tmpfs, no core dumps.
+    command:
+      - sh
+      - -c
+      - exec redis-server --save "" --appendonly no --requirepass "$$REDIS_PASSWORD" --maxmemory 256mb --maxmemory-policy volatile-ttl
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+    tmpfs:
+      - /data
+    ulimits:
+      core: 0
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  api:
+    <<: *app
+    command: ["api"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    environment:
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:?set COMPOSE_DATABASE_URL in .env (mysql:3306)}
+      REDIS_URL: ${COMPOSE_REDIS_URL:?set COMPOSE_REDIS_URL in .env (redis:6379)}
+      INGEST_DATABASE_URL: ""
+      MIGRATOR_DATABASE_URL: ""
+      API_WORKERS: ${API_WORKERS:-2}
+
+  purge:
+    <<: *app
+    command: ["purge-loop"]
+
+  web:
+    image: ${DOCKER_USER:-local}/medicare-plan-selector-web:${IMAGE_TAG:-latest}
+    build:
+      context: ./frontend
+    depends_on:
+      api: { condition: service_healthy }
+    ports:
+      - "127.0.0.1:${MSP_WEB_PORT:-8080}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
+
+volumes:
+  mysql-data:
