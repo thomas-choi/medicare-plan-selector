@@ -44,3 +44,17 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
 - Tests: parser header contracts, normalization, S3 code mapping and unknown-code stop, PBP services/inpatient,
   county statuses, lock mismatch, golden row, idempotent re-run, other-year isolation, rollback on failed
   validation, HUD client, ZIP cache, models↔migrations.
+
+## Config and dev-data fixes (2026-11-17)
+- Blank numeric/boolean values in `.env` (e.g. `LLM_PRICE_IN_PER_MTOK_USD=`) now mean "use the default" instead of
+  breaking `Settings()`.
+- `.env` is read from the repo root from any directory (then `./.env`, then `$MSP_ENV_FILE`); real environment
+  variables still win. Host defaults match the dev stack (127.0.0.1:3307 MySQL, 127.0.0.1:6380 Redis).
+- `.env.example` now holds working local dev values (host ports); the dev compose `api` service loads `.env` and
+  overrides the DB/Redis URLs with the container service names. Image name
+  `${DOCKER_USER:-local}/medicare-plan-selector:${IMAGE_TAG:-latest}`, runtime UID/GID as build args.
+- `make ingest-dev`: migrate + `selector ingest --year 2027 --fixtures` (committed CMS samples, never touches
+  `sources.lock`) + dev ZIP→county rows. `make ingest` for the real download.
+- HUD fallback (HUD-API-SETUP.md): `selector hud load-file ZIP_COUNTY_MMYYYY.xlsx|.csv [--state AZ]`, and
+  `selector/geo/resolve.py` (cache → HUD API if a token is set → state county picker).
+- Tests: blank values, env-file order, HUD file parsing (CSV/XLSX), fixture ingest CLI, ZIP resolution fallbacks.

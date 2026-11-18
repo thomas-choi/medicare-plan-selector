@@ -62,19 +62,30 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     from selector.ingest.run import run_ingest
     from selector.ingest.validate import ValidationFailed
 
+    kwargs: dict[str, object] = {}
+    if args.fixtures is not None:
+        import tempfile
+
+        from selector.ingest.devdata import FIXTURE_ROOT, fixture_fetched
+
+        root = Path(args.fixtures) if args.fixtures else FIXTURE_ROOT / str(args.year)
+        kwargs["fetched"] = fixture_fetched(root)
+        # Fixture runs never touch the real sources.lock.
+        kwargs["lock_path"] = Path(tempfile.mkdtemp(prefix="msp-devlock-")) / "sources.lock"
     try:
         res = run_ingest(
             make_engine(get_settings().effective_ingest_url),
             args.year,
             accept_new=args.accept_new,
             offline=args.offline,
+            **kwargs,  # type: ignore[arg-type]
         )
     except (LockMismatch, ValidationFailed) as e:
         print(str(e), file=sys.stderr)
         return 2
     for table, n in sorted(res.counts.items()):
         print(f"{table:>24} {n:>10}")
-    if res.lock_changed:
+    if res.lock_changed and args.fixtures is None:
         print("sources.lock updated — review and commit it")
     return 0
 
@@ -89,6 +100,28 @@ def cmd_hud_preload(args: argparse.Namespace) -> int:
     with make_engine(s.effective_ingest_url).begin() as conn:
         n = store_zip_counties(conn, rows)
     print(f"cached {n} ZIP-county rows for {args.state}")
+    return 0
+
+
+def cmd_hud_load_file(args: argparse.Namespace) -> int:
+    from selector.db import make_engine
+    from selector.geo.hud import store_zip_counties
+    from selector.geo.hud_file import HudFileError, read_hud_file
+
+    try:
+        rows = read_hud_file(Path(args.path), args.year, args.quarter)
+    except (HudFileError, FileNotFoundError) as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    if args.state:
+        from selector.geo.hud_file import state_filter
+
+        rows = state_filter(rows, args.state)
+    total = 0
+    with make_engine(get_settings().effective_ingest_url).begin() as conn:
+        for i in range(0, len(rows), 2000):
+            total += store_zip_counties(conn, rows[i : i + 2000])
+    print(f"cached {total} ZIP-county rows from {Path(args.path).name}")
     return 0
 
 
@@ -110,6 +143,14 @@ def build_parser() -> argparse.ArgumentParser:
     i.add_argument("--year", type=int, required=True)
     i.add_argument("--accept-new", action="store_true", help="accept sources that differ from sources.lock")
     i.add_argument("--offline", action="store_true", help="reuse files already in data/raw/<year>")
+    i.add_argument(
+        "--fixtures",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="DIR",
+        help="load the committed CMS sample fixtures (dev only; default backend/tests/fixtures/cms/<year>)",
+    )
     i.set_defaults(func=cmd_ingest)
 
     h = sub.add_parser("hud", help="HUD ZIP→county crosswalk")
@@ -117,6 +158,12 @@ def build_parser() -> argparse.ArgumentParser:
     hp = hsub.add_parser("preload", help="bulk-load zip_county_cache for a state (or All)")
     hp.add_argument("--state", required=True, help="2-letter state code or All")
     hp.set_defaults(func=cmd_hud_preload)
+    hf = hsub.add_parser("load-file", help="fallback without a token: load a HUD ZIP_COUNTY .xlsx/.csv file")
+    hf.add_argument("path")
+    hf.add_argument("--year", type=int)
+    hf.add_argument("--quarter", type=int, choices=[1, 2, 3, 4])
+    hf.add_argument("--state", help="only keep ZIPs whose county FIPS is in this 2-letter state")
+    hf.set_defaults(func=cmd_hud_load_file)
 
     f = sub.add_parser("ephemeral-flush", help="delete all No-save (eph:*) keys; run at API start")
     f.set_defaults(func=cmd_ephemeral_flush)

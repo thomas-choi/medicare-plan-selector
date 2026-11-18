@@ -9,7 +9,12 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY selector ./selector
-RUN uv sync --frozen --no-dev && useradd --system --uid 10001 app
+# Runtime user; UID/GID are build args so bind mounts on the host match (default 10001).
+ARG APP_UID=10001
+ARG APP_GID=10001
+RUN uv sync --frozen --no-dev \
+    && groupadd --system --gid "${APP_GID}" app \
+    && useradd --system --uid "${APP_UID}" --gid "${APP_GID}" --no-create-home app
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 USER app
 ENTRYPOINT ["docker-entrypoint.sh"]

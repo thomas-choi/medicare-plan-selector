@@ -2,24 +2,65 @@
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
-from typing import Literal
+from pathlib import Path
+from typing import Any, Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SessionMode = Literal["nosave", "saved"]
-LLMProvider = Literal["anthropic", "openai", "openai_compat", "ollama", "fake", ""]
+# `xai` is the `openai_compat` adapter with xAI's base URL and key (see selector/agent/providers).
+LLMProvider = Literal["anthropic", "openai", "openai_compat", "xai", "ollama", "fake", ""]
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def default_env_files() -> tuple[Path, ...]:
+    """Where `.env` is read from, lowest priority first.
+
+    1. `<repo>/.env` (the file `cp .env.example .env` creates), so host commands work from any directory;
+    2. `./.env` in the current directory (backward compatible with running from `backend/`);
+    3. `$MSP_ENV_FILE` if set (explicit path, highest priority).
+    Real environment variables always win over every file. Inside the image `/app` has no `.env`; compose passes
+    the values as environment variables instead.
+    """
+    files = [REPO_ROOT / ".env", Path.cwd() / ".env"]
+    if explicit := os.environ.get("MSP_ENV_FILE"):
+        files.append(Path(explicit))
+    seen: list[Path] = []
+    for f in files:
+        if f.resolve() not in [x.resolve() for x in seen]:
+            seen.append(f)
+    return tuple(seen)
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file=default_env_files(), env_file_encoding="utf-8", extra="ignore")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _blank_means_default(cls, data: Any) -> Any:
+        """`KEY=` (blank) in `.env` means "use the default", for every non-string setting.
+
+        `.env.example` ships blank placeholders such as `LLM_PRICE_IN_PER_MTOK_USD=`; without this a blank number
+        made `Settings()` fail to load.
+        """
+        if isinstance(data, dict):
+            str_fields = {n for n, f in cls.model_fields.items() if f.annotation is str}
+            return {
+                k: v
+                for k, v in data.items()
+                if not (isinstance(v, str) and not v.strip() and k.lower() not in str_fields)
+            }
+        return data
 
     # Databases. Three roles: migrator (DDL), ingest (plan tables RW), api (plan RO, user tables RW).
-    database_url: str = "mysql+pymysql://msp_api:msp_api@127.0.0.1:3307/msp"
+    database_url: str = "mysql+pymysql://msp_api:dev-api-pw@127.0.0.1:3307/msp"  # dev stack (host side)
     ingest_database_url: str = ""
     migrator_database_url: str = ""
-    redis_url: str = "redis://:msp_redis@127.0.0.1:6380/0"
+    redis_url: str = "redis://:dev-redis-pw@127.0.0.1:6380/0"
 
     # Sessions and privacy (DESIGN §8.1, §8.5).
     default_session_mode: SessionMode = "nosave"
@@ -39,6 +80,7 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr = SecretStr("")
     openai_api_key: SecretStr = SecretStr("")
     openai_compat_api_key: SecretStr = SecretStr("")
+    xai_api_key: SecretStr = SecretStr("")
     llm_fallback_provider: LLMProvider = ""
     llm_fallback_model: str = ""
     llm_timeout_s: float = 60
@@ -61,9 +103,20 @@ class Settings(BaseSettings):
     hud_api_token: SecretStr = SecretStr("")
     hud_api_base: str = "https://www.huduser.gov/hudapi/public/usps"
 
+    # Admin API (DESIGN §7, Q2). nginx does basic auth + IP allowlist and then adds the header
+    # `X-Admin-Gate: <ADMIN_GATE_SECRET>`; the API refuses admin calls without it. Blank = admin API off.
+    admin_gate_secret: SecretStr = SecretStr("")
+
+    # Part B placeholders (S7: 2027 values not published as of 2026-11-12). Monthly premium and yearly deductible
+    # in cents; the defaults are the CMS 2026 values and are labelled as placeholders in every estimate.
+    part_b_premium_monthly_cents: int = 20290
+    part_b_deductible_cents: int = 28300
+    part_b_vintage: str = "2026 placeholder (2027 TBD)"
+
     # Data.
     plan_year: int = 2027
     data_dir: str = "data"
+    app_version: str = "dev"
 
     @field_validator("database_url", "redis_url")
     @classmethod
