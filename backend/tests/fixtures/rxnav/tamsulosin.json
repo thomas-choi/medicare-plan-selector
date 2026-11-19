@@ -1,0 +1,94 @@
+{
+ "drugs_tamsulosin": {
+  "drugGroup": {
+   "name": null,
+   "conceptGroup": [
+    {
+     "tty": "BPCK"
+    },
+    {
+     "tty": "GPCK"
+    },
+    {
+     "tty": "SBD",
+     "conceptProperties": [
+      {
+       "rxcui": "863671",
+       "name": "tamsulosin hydrochloride 0.4 MG Oral Capsule [Flomax]",
+       "tty": "SBD"
+      },
+      {
+       "rxcui": "996101",
+       "name": "dutasteride 0.5 MG / tamsulosin hydrochloride 0.4 MG Oral Capsule [Jalyn]",
+       "tty": "SBD"
+      }
+     ]
+    },
+    {
+     "tty": "SCD",
+     "conceptProperties": [
+      {
+       "rxcui": "863669",
+       "name": "tamsulosin hydrochloride 0.4 MG Oral Capsule",
+       "tty": "SCD"
+      },
+      {
+       "rxcui": "863675",
+       "name": "tamsulosin hydrochloride 0.4 MG Extended Release Oral Tablet",
+       "tty": "SCD"
+      },
+      {
+       "rxcui": "996097",
+       "name": "dutasteride 0.5 MG / tamsulosin hydrochloride 0.4 MG Oral Capsule",
+       "tty": "SCD"
+      }
+     ]
+    },
+    {
+     "tty": "IN",
+     "conceptProperties": [
+      {
+       "rxcui": "77492",
+       "name": "tamsulosin",
+       "tty": "IN"
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "drugs_empty": {
+  "drugGroup": {
+   "name": null
+  }
+ },
+ "approximate_tamsulosin_capsule": {
+  "approximateGroup": {
+   "inputTerm": null,
+   "candidate": [
+    {
+     "rxcui": "863669",
+     "rxaui": "1458726",
+     "score": "13.7",
+     "rank": "1",
+     "source": "MMSL"
+    },
+    {
+     "rxcui": "863669",
+     "rxaui": "1458733",
+     "score": "12.4",
+     "rank": "2",
+     "name": "TAMSULOSIN HCL 0.4MG CAP",
+     "source": "VANDF"
+    }
+   ]
+  }
+ },
+ "properties_863669": {
+  "properties": {
+   "rxcui": "863669",
+   "name": "tamsulosin hydrochloride 0.4 MG Oral Capsule",
+   "tty": "SCD"
+  }
+ }
+}

@@ -1,6 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { emptyProfile } from "./api";
 import { Intake } from "./Intake";
+import { mockFetch } from "./testdata";
+
+afterEach(() => vi.unstubAllGlobals());
 
 function setup() {
   const onSubmit = vi.fn();
@@ -58,5 +61,89 @@ describe("intake: add a drug by RxCUI (QA #2)", () => {
     }
     expect(screen.getAllByText("RxCUI 197361")).toHaveLength(1);
     expect(screen.getByRole("alert")).toHaveTextContent(/already on your list/);
+  });
+});
+
+// Thomas's ml3090 report 2026-11-19: "The drugs search has no response" for "tamsulosin 0.4 mg capsule".
+describe("intake: drug search always answers", () => {
+  const drugName = () => screen.getByLabelText("Drug name");
+  const status = () => screen.getByRole("status", { name: "Drug search status" });
+  const CAPSULE = { rxcui: "863669", name: "tamsulosin hydrochloride 0.4 MG Oral Capsule", tty: "SCD" };
+
+  it("full string: shows the fallback note and the 863669 capsule first", async () => {
+    const calls = mockFetch({
+      "GET /api/drugs": { candidates: [CAPSULE], matched_as: "tamsulosin", how: "ingredient" },
+    });
+    setup();
+    fireEvent.change(drugName(), { target: { value: "tamsulosin 0.4 mg capsule" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    const list = await screen.findByRole("list", { name: "Drug matches" });
+    expect(list.querySelector("button")).toHaveTextContent(
+      "Add tamsulosin hydrochloride 0.4 MG Oral Capsule",
+    );
+    expect(status()).toHaveTextContent(/No exact match for “tamsulosin 0.4 mg capsule”.*“tamsulosin”/);
+    expect(calls[0].key).toBe("GET /api/drugs");
+  });
+
+  it("partial name with Enter searches instead of submitting the form", async () => {
+    let url = "";
+    mockFetch({
+      "GET /api/drugs": (u: string) => {
+        url = u;
+        return { candidates: [CAPSULE], matched_as: null, how: "exact" };
+      },
+    });
+    const onSubmit = setup();
+    fireEvent.change(drugName(), { target: { value: "tamsulosin" } });
+    fireEvent.keyDown(drugName(), { key: "Enter" });
+    expect(await screen.findByText(/1 match\(es\) for “tamsulosin”/)).toBeInTheDocument();
+    expect(url).toContain("q=tamsulosin");
+    expect(onSubmit).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /Add tamsulosin/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Compare plans" }));
+    expect(onSubmit.mock.calls[0][0].drugs[0]).toMatchObject({ rxcui: "863669" });
+  });
+
+  it("says so when nothing is found", async () => {
+    mockFetch({ "GET /api/drugs": { candidates: [], matched_as: null, how: "none" } });
+    setup();
+    fireEvent.change(drugName(), { target: { value: "zzqx" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(await screen.findByText(/No drugs found for “zzqx”/)).toBeInTheDocument();
+  });
+
+  it("shows the server's error (e.g. no internet to RxNav) with the RxCUI hint", async () => {
+    mockFetch({
+      "GET /api/drugs": new Response(
+        JSON.stringify({ detail: { code: "lookup_failed", message: "Drug search is unavailable." } }),
+        { status: 503 },
+      ),
+    });
+    setup();
+    fireEvent.change(drugName(), { target: { value: "tamsulosin" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/unavailable.*RxCUI instead/);
+  });
+
+  it("shows Searching… while the request is in flight", async () => {
+    let release: (v: Response) => void = () => {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>((r) => (release = r))),
+    );
+    setup();
+    fireEvent.change(drugName(), { target: { value: "tamsulosin" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(await screen.findByRole("button", { name: "Searching…" })).toBeDisabled();
+    expect(status()).toHaveTextContent("Searching for “tamsulosin”…");
+    release(new Response(JSON.stringify({ candidates: [], how: "none" }), { status: 200 }));
+    expect(await screen.findByText(/No drugs found/)).toBeInTheDocument();
+  });
+
+  it("asks for 2+ letters instead of ignoring the click", () => {
+    setup();
+    fireEvent.change(drugName(), { target: { value: "t" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(/at least 2 letters/);
   });
 });

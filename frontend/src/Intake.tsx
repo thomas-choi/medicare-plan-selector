@@ -22,6 +22,14 @@ export function Intake({ profile, maxDrugs, maxProviders, busy, onSubmit }: Prop
   const [pickState, setPickState] = useState("");
   const [drugQ, setDrugQ] = useState("");
   const [cands, setCands] = useState<{ rxcui: string; name: string }[]>([]);
+  // Drug search status, always visible so a search never looks like "no response" (Thomas's 2026-11-19 report).
+  const [drugStatus, setDrugStatus] = useState<
+    | { kind: "idle" }
+    | { kind: "searching"; q: string }
+    | { kind: "found"; q: string; n: number; matchedAs: string | null }
+    | { kind: "empty"; q: string }
+    | { kind: "error"; message: string }
+  >({ kind: "idle" });
   const [manualRx, setManualRx] = useState("");
   const [rxErr, setRxErr] = useState<string | null>(null);
   const [doctor, setDoctor] = useState("");
@@ -54,16 +62,29 @@ export function Intake({ profile, maxDrugs, maxProviders, busy, onSubmit }: Prop
 
   async function searchDrug() {
     setErr(null);
-    if (drugQ.trim().length < 2) return;
+    const q = drugQ.trim();
+    if (q.length < 2) {
+      setCands([]);
+      return setDrugStatus({ kind: "error", message: "Type at least 2 letters of the drug name." });
+    }
+    setDrugStatus({ kind: "searching", q });
     try {
-      setCands((await api.drugs(drugQ.trim())).candidates);
+      const r = await api.drugs(q);
+      setCands(r.candidates);
+      setDrugStatus(
+        r.candidates.length
+          ? { kind: "found", q, n: r.candidates.length, matchedAs: r.matched_as ?? null }
+          : { kind: "empty", q },
+      );
     } catch (e) {
       setCands([]);
-      setErr(
-        e instanceof ApiError
-          ? `${e.message} You can enter the drug's RxCUI instead.`
-          : "Drug search failed.",
-      );
+      setDrugStatus({
+        kind: "error",
+        message:
+          e instanceof ApiError
+            ? `${e.message} You can enter the drug's RxCUI instead.`
+            : "Drug search failed. You can enter the drug's RxCUI instead.",
+      });
     }
   }
 
@@ -73,6 +94,7 @@ export function Intake({ profile, maxDrugs, maxProviders, busy, onSubmit }: Prop
     setCands([]);
     setDrugQ("");
     setManualRx("");
+    setDrugStatus({ kind: "idle" });
   }
 
   // RxCUI-only entry is the documented offline path (drug search needs RxNav). The typed drug name, if any, is the
@@ -161,12 +183,33 @@ export function Intake({ profile, maxDrugs, maxProviders, busy, onSubmit }: Prop
           placeholder="Drug name, e.g. metformin"
           value={drugQ}
           onChange={(e) => setDrugQ(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter searches; it must not submit the whole form ("Compare plans").
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void searchDrug();
+            }
+          }}
           aria-label="Drug name"
         />
-        <button type="button" onClick={searchDrug}>
-          Search
+        <button type="button" onClick={searchDrug} disabled={drugStatus.kind === "searching"}>
+          {drugStatus.kind === "searching" ? "Searching…" : "Search"}
         </button>
       </div>
+      <p className="hint" role="status" aria-live="polite" aria-label="Drug search status">
+        {drugStatus.kind === "searching" && `Searching for “${drugStatus.q}”…`}
+        {drugStatus.kind === "found" &&
+          (drugStatus.matchedAs
+            ? `No exact match for “${drugStatus.q}”. Showing ${drugStatus.n} result(s) for “${drugStatus.matchedAs}”: pick your strength and form.`
+            : `${drugStatus.n} match(es) for “${drugStatus.q}”. Pick yours below.`)}
+        {drugStatus.kind === "empty" &&
+          `No drugs found for “${drugStatus.q}”. Try just the drug name (e.g. “tamsulosin”), check the spelling, or add it by RxCUI.`}
+      </p>
+      {drugStatus.kind === "error" && (
+        <p role="alert" className="error">
+          {drugStatus.message}
+        </p>
+      )}
       {cands.length > 0 && (
         <ul className="candidates" aria-label="Drug matches">
           {cands.map((c) => (

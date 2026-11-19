@@ -249,9 +249,11 @@ def drugs(q: str = Query(min_length=2, max_length=80), sess: Session = Depends(c
     if sess.state.rxnav is None:
         raise HTTPException(503, {"code": "lookup_unavailable", "message": "Drug search is off."})
     try:
-        return {"candidates": [d.__dict__ for d in sess.state.rxnav.search(q)]}
+        res = sess.state.rxnav.find(q)
     except LookupError_ as e:
         raise HTTPException(503, {"code": "lookup_failed", "message": "Drug search is unavailable."}) from e
+    # `matched_as`/`how` tell the UI what was actually found, so an empty or fallback result is never silent.
+    return {"candidates": [d.__dict__ for d in res.candidates], "matched_as": res.matched_as, "how": res.how}
 
 
 @router.get("/providers")

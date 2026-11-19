@@ -58,6 +58,13 @@ export const emptyProfile = (): Profile => ({
   must_haves: {},
 });
 
+/** GET /api/drugs. `matched_as` is set when the server fell back to the ingredient name or a closest match. */
+export interface DrugSearch {
+  candidates: { rxcui: string; name: string; tty?: string }[];
+  matched_as?: string | null;
+  how?: "exact" | "ingredient" | "approximate" | "none";
+}
+
 export interface DrugRow {
   name: string;
   covered: boolean;
@@ -181,8 +188,7 @@ export const api = {
     call<{ counties: County[]; note: string | null }>("GET", `/api/location?zip=${encodeURIComponent(zip)}`),
   counties: (state: string) =>
     call<{ counties: County[] }>("GET", `/api/counties?state=${encodeURIComponent(state)}`),
-  drugs: (q: string) =>
-    call<{ candidates: { rxcui: string; name: string }[] }>("GET", `/api/drugs?q=${encodeURIComponent(q)}`),
+  drugs: (q: string) => call<DrugSearch>("GET", `/api/drugs?q=${encodeURIComponent(q)}`),
   compare: (profile?: Profile) =>
     call<{
       canvas: Canvas;
