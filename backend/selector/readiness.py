@@ -18,9 +18,9 @@ from selector.models import plan
 log = logging.getLogger("selector.readiness")
 
 HINT_DATA = (
-    "The plan database is empty or missing. Load data, then restart the API: `make ingest-dev` (dev sample data; "
-    "needed again after the dev MySQL container is recreated, because it runs on tmpfs) or `make ingest` (real "
-    "CMS data). Then `make app-up`."
+    "The plan database is empty or missing. Load it with `make ingest-dev` (dev sample data; needed again whenever "
+    "the dev MySQL container is recreated, because it runs on tmpfs) or `make ingest` (real CMS data), then run "
+    "`make app-up` (the API turns ready by itself once the data is there)."
 )
 HINT_DB = "MySQL is not reachable. Start it with `make stack-up` and check DATABASE_URL."
 HINT_REDIS = "Redis is not reachable. Start it with `make stack-up` and check REDIS_URL."
