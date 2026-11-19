@@ -97,3 +97,53 @@ def test_host_defaults_use_published_ports() -> None:
 def test_xai_is_a_known_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LLM_PROVIDER", "xai")
     assert Settings().llm_provider == "xai"
+
+
+def _compose_env_file(path: Path) -> dict[str, str]:
+    """Parse an env file the way Docker Compose `env_file:` does for our purposes.
+
+    Compose does not strip a trailing `# comment` after a blank value (`KEY=   # note` becomes "# note"), so this
+    parser deliberately keeps everything after the first `=` (QA issue 1).
+    """
+    out: dict[str, str] = {}
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        assert "=" in line, f"not KEY=VALUE: {raw!r}"
+        key, value = line.split("=", 1)
+        out[key.strip()] = value.strip()
+    return out
+
+
+def test_env_example_has_no_inline_comments() -> None:
+    """QA issue 1: every comment in .env.example is on its own line, so compose passes clean values."""
+    from selector.config import REPO_ROOT
+
+    env = _compose_env_file(REPO_ROOT / ".env.example")
+    assert env, ".env.example parsed to nothing"
+    leaked = {k: v for k, v in env.items() if "#" in v}
+    assert not leaked, f"inline comments would leak into values: {sorted(leaked)}"
+
+
+def test_env_example_loads_the_compose_way(monkeypatch: pytest.MonkeyPatch) -> None:
+    from selector.config import REPO_ROOT
+
+    for key, value in _compose_env_file(REPO_ROOT / ".env.example").items():
+        monkeypatch.setenv(key, value)
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert s.llm_price_in_per_mtok_usd == 0.0
+    assert s.llm_provider == "fake"
+
+
+def test_leaked_comment_counts_as_blank(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Older .env copies made from the previous .env.example must still start (QA issue 1)."""
+    monkeypatch.setenv("LLM_PRICE_IN_PER_MTOK_USD", "# USD per million input tokens")
+    monkeypatch.setenv("LLM_FALLBACK_PROVIDER", "# used on 5xx/timeout")
+    monkeypatch.setenv("LLM_MODEL", "  # pinned model id")
+    monkeypatch.setenv("HUD_API_TOKEN", "# optional")
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert s.llm_price_in_per_mtok_usd == 0.0
+    assert s.llm_fallback_provider == ""
+    assert s.llm_model == ""
+    assert not s.hud_api_token.get_secret_value()

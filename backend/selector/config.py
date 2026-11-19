@@ -45,15 +45,20 @@ class Settings(BaseSettings):
         """`KEY=` (blank) in `.env` means "use the default", for every non-string setting.
 
         `.env.example` ships blank placeholders such as `LLM_PRICE_IN_PER_MTOK_USD=`; without this a blank number
-        made `Settings()` fail to load.
+        made `Settings()` fail to load. A value that starts with `#` is a leaked inline comment and counts as blank.
         """
         if isinstance(data, dict):
             str_fields = {n for n, f in cls.model_fields.items() if f.annotation is str}
-            return {
-                k: v
-                for k, v in data.items()
-                if not (isinstance(v, str) and not v.strip() and k.lower() not in str_fields)
-            }
+            out: dict[str, Any] = {}
+            for k, v in data.items():
+                if isinstance(v, str) and v.strip().startswith("#"):
+                    # Docker Compose `env_file` keeps a trailing comment after a blank value
+                    # (`KEY=   # note` -> "# note"); no real setting value starts with '#'.
+                    v = ""
+                if isinstance(v, str) and not v.strip() and k.lower() not in str_fields:
+                    continue
+                out[k] = v
+            return out
         return data
 
     # Databases. Three roles: migrator (DDL), ingest (plan tables RW), api (plan RO, user tables RW).
