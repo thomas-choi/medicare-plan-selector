@@ -28,3 +28,37 @@ def test_frontend_targets_check_dependencies_first() -> None:
         assert "frontend-deps" in prereqs.split("##")[0], target
     _, body = _recipe("frontend-deps")
     assert "npm ci" in "\n".join(body)
+
+
+COMPOSE_DEV = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+COMPOSE_PROD = (REPO_ROOT / "docker-compose.prod.yml").read_text(encoding="utf-8")
+
+
+def test_no_port_mapping_can_default_to_all_interfaces() -> None:
+    """QA #5: `"${MSP_WEB_BIND:-}:8080:8080"` binds 0.0.0.0 when the variable is blank."""
+    for text_ in (COMPOSE_DEV, COMPOSE_PROD):
+        ports = re.findall(r'^\s*-\s*"([^"]*:\d+)"\s*$', text_, re.M)
+        assert ports
+        for p in ports:
+            m = re.fullmatch(r"(\$\{[^}]*\}|[0-9.]*):(\$\{[^}]*\}|\d+):\d+", p)
+            host = m.group(1) if m else ""
+            assert host, f"port {p!r} has no host IP (binds 0.0.0.0)"
+            assert not re.search(r"\$\{\w+(:?-)?\}", host), f"{p!r}: host IP without a safe default"
+            default = re.fullmatch(r"\$\{\w+:-([0-9.]+)\}", host)
+            assert host == "127.0.0.1" or (default and default.group(1) == "127.0.0.1"), p
+
+
+def test_app_up_never_recreates_the_tmpfs_stack() -> None:
+    """QA #6: `make app-up` recreated MySQL (tmpfs) and silently wiped the dev data."""
+    prereqs, body = _recipe("app-up")
+    assert "stack-up" in prereqs
+    up = next(line for line in body if " up " in line)
+    assert "--no-deps" in up and up.split("--no-deps", 1)[1].split("||")[0].split() == ["api", "web"]
+    assert "make ingest-dev" in "\n".join(body)
+    _, stack = _recipe("stack-up")
+    assert "--no-recreate" in stack[0]
+
+
+def test_api_healthchecks_use_readiness() -> None:
+    for text_ in (COMPOSE_DEV, COMPOSE_PROD):
+        assert "/api/ready" in text_ and "/api/health'" not in text_

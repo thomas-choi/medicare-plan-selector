@@ -56,6 +56,27 @@ def cmd_ephemeral_flush(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_check_data(args: argparse.Namespace) -> int:
+    """Print a loud, actionable error when the API would not be ready (run by the container entrypoint)."""
+    import redis
+
+    from selector import readiness
+    from selector.db import make_engine
+
+    s = get_settings()
+    eng = make_engine(s.database_url)
+    try:
+        r = readiness.check(eng, redis.Redis.from_url(s.redis_url, socket_connect_timeout=5), s.plan_year)
+    finally:
+        eng.dispose()
+    if r.ok:
+        print(f"plan data for {s.plan_year}: ready")
+        return 0
+    bar = "!" * 78
+    print(f"{bar}\nNOT READY ({r.reason}, plan year {s.plan_year}):\n{r.hint}\n{bar}", file=sys.stderr)
+    return 1
+
+
 def cmd_purge(args: argparse.Namespace) -> int:
     """Nightly retention purge (DESIGN §8.1): idle Saved sessions and old feedback."""
     from selector.db import make_engine
@@ -179,6 +200,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     f = sub.add_parser("ephemeral-flush", help="delete all No-save (eph:*) keys; run at API start")
     f.set_defaults(func=cmd_ephemeral_flush)
+
+    cd = sub.add_parser("check-data", help="exit 1 with a fix-it message if Redis or the plan data is missing")
+    cd.set_defaults(func=cmd_check_data)
 
     pg = sub.add_parser(
         "purge", help="delete Saved sessions idle > RETENTION_DAYS and feedback > FEEDBACK_RETENTION_DAYS"

@@ -25,8 +25,10 @@ NODE_BIN := ./node_modules/.bin
 help:
 	@grep -E '^[a-z-]+:' Makefile | cut -d: -f1
 
+# --no-recreate: the dev MySQL runs on tmpfs, so recreating it (compose does that whenever its config changes)
+# would silently wipe the schema and data. To apply a changed mysql/redis config: make stack-down && make stack-up.
 stack-up:  ## MySQL 8.4 (:3307) and Redis 7.4 (:6380, no persistence) for tests
-	$(COMPOSE) up -d --wait mysql redis
+	$(COMPOSE) up -d --wait --no-recreate mysql redis
 
 stack-down:
 	$(COMPOSE) --profile app down
@@ -78,8 +80,14 @@ api-dev:  ## API on the host at http://127.0.0.1:8000 (reload on change)
 web-dev:  ## Vite dev server at http://localhost:5173 (proxies /api to :8000)
 	cd frontend && npm run dev
 
-app-up:  ## whole stack in Docker: MySQL, Redis, API and the nginx web UI on http://127.0.0.1:$${MSP_WEB_PORT:-8080}
-	$(COMPOSE) --profile app up -d --build --wait
+# Only the app services (api, web) are built/recreated; MySQL and Redis are started if needed but never recreated.
+app-up: stack-up  ## API + nginx web UI in Docker on http://$${MSP_WEB_BIND:-127.0.0.1}:$${MSP_WEB_PORT:-8080}
+	@$(COMPOSE) --profile app up -d --build --wait --no-deps api web || { \
+	  echo "" >&2; \
+	  echo "ERROR: the API did not become ready. Last API log lines:" >&2; \
+	  $(COMPOSE) --profile app logs --tail 15 api >&2; \
+	  echo "If it says the plan data is missing: make ingest-dev && make app-up" >&2; \
+	  exit 1; }
 
 app-down:
 	$(COMPOSE) --profile app down
@@ -94,7 +102,8 @@ build-frontend:
 	cd frontend && npm run build
 
 smoke:  ## quick check of a running app (make app-up or api-dev): config, a No-save session and a Maricopa compare
-	@bash scripts/smoke.sh "$${SMOKE_URL:-http://127.0.0.1:$${MSP_WEB_PORT:-8080}}"
+	@$(LOAD_ENV) host="$${MSP_WEB_BIND:-127.0.0.1}"; [ "$$host" != 0.0.0.0 ] || host=127.0.0.1; \
+	  bash scripts/smoke.sh "$${SMOKE_URL:-http://$$host:$${MSP_WEB_PORT:-8080}}"
 
 # ---- production (docker-compose.prod.yml; needs the server .env, see deploy/README.md) ----
 prod-config:  ## validate the production compose file against .env (prints no secrets)

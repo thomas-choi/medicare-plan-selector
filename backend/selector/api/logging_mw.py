@@ -54,7 +54,7 @@ class AccessLogMiddleware:
             raise
         finally:
             path = scope.get("path", "")
-            if not path.startswith("/api/health"):
+            if not path.startswith(("/api/health", "/api/ready")):
                 log.info(
                     "rid=%s method=%s path=%s status=%s ms=%d",
                     rid,

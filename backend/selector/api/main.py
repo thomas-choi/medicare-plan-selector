@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from selector import __version__
+from selector import __version__, readiness
 from selector.agent.providers import ChatProvider
 from selector.api import feedback_routes
 from selector.api.logging_mw import AccessLogMiddleware, configure_logging
@@ -39,7 +39,17 @@ def create_app(
 
     @app.get("/api/health")
     def health() -> dict[str, str]:
+        """Liveness only: the process is up. Container healthchecks use /api/ready."""
         return {"status": "ok", "version": __version__}
+
+    @app.get("/api/ready")
+    def ready() -> JSONResponse:
+        """Readiness: Redis answers and plan data for PLAN_YEAR is loaded; 503 with a fix-it hint otherwise."""
+        st = app.state.msp
+        r = readiness.check(st.engine, st.redis, settings.plan_year)
+        if not r.ok:
+            readiness.log_not_ready(r, settings.plan_year)
+        return JSONResponse(r.as_json(), status_code=200 if r.ok else 503)
 
     app.include_router(router)
     app.include_router(feedback_routes.router)

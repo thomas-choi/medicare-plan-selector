@@ -12,8 +12,11 @@ fail() { printf 'FAIL  %s\n' "$1" >&2; exit 1; }
 
 echo "Smoke test against $BASE"
 c "$BASE/api/health" | j 'assert d["status"]=="ok", d' && pass "GET /api/health" || fail "GET /api/health"
+ready="$(curl -sS "$BASE/api/ready" || true)"
+echo "$ready" | j 'assert d["status"]=="ready"' 2>/dev/null && pass "GET /api/ready (plan data loaded)" \
+  || fail "GET /api/ready: $(echo "$ready" | j 'print(d.get("reason"), "-", d.get("hint"))' 2>/dev/null || echo "$ready")"
 c "$BASE/api/config" | j 'assert d["plan_year"]==2027 and d["default_mode"] in ("nosave","saved"); print("      llm_enabled=%s provider=%s modes=%s" % (d["llm_enabled"], d["llm_provider_label"], d["modes"]))' \
-  && pass "GET /api/config" || fail "GET /api/config" || fail "GET /api/config"
+  && pass "GET /api/config" || fail "GET /api/config"
 c -H 'Content-Type: application/json' -X POST "$BASE/api/session" \
   -d '{"mode":"nosave","consent_version":"2026-11-17","accept_terms":true}' | j 'assert d["session"]["mode"]=="nosave"' \
   && pass "POST /api/session (No-save)" || fail "POST /api/session" || fail "POST /api/session (No-save)"

@@ -6,6 +6,9 @@ case "${1:-api}" in
   api)
     # Wipe all No-save keys once per container start, before any worker accepts requests (N5).
     selector ephemeral-flush
+    # Loud log line when the plan data is missing (e.g. the tmpfs dev MySQL was recreated); /api/ready stays 503
+    # (container unhealthy) until it is loaded, so `make app-up` fails instead of serving "unavailable" pages.
+    selector check-data || echo "Starting anyway; the API reports not ready until the data is loaded." >&2
     exec uvicorn --factory selector.api.main:app_factory --host 0.0.0.0 --port 8000 \
       --workers "${API_WORKERS:-2}" --no-access-log --proxy-headers --forwarded-allow-ips '*'
     ;;

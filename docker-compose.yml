@@ -72,10 +72,12 @@ services:
     ports:
       - "127.0.0.1:${MSP_API_PORT:-8000}:8000"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
-      interval: 5s
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/ready', timeout=3)"]
+      # /api/ready is 503 until plan data is loaded, so `make app-up` fails loudly on an empty database.
+      interval: 3s
       timeout: 5s
-      retries: 30
+      start_period: 10s
+      retries: 15
     ulimits:
       core: 0
     read_only: true
