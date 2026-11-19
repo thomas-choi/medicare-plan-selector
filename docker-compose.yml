@@ -91,3 +91,4 @@ services:
       api: { condition: service_healthy }
     ports:
       - "127.0.0.1:${MSP_WEB_PORT:-8080}:8080"
+      - "${MSP_WEB_BIND:-}:${MSP_WEB_PORT:-8080}:8080"
