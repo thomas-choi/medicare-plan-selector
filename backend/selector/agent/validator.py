@@ -76,6 +76,10 @@ class Validation:
 
 def validate(text: str, facts: Facts) -> Validation:
     problems: list[str] = []
+    if not text.strip():
+        # An empty reply would render as an endless pending bubble (QA #7): reject it so the turn retries once
+        # and otherwise falls back to the deterministic summary.
+        problems.append("empty answer")
     for m in MONEY.finditer(text):
         v = Decimal(m.group(1).replace(",", "") + ("." + m.group(2) if m.group(2) else ""))
         if not _money_ok(v, facts, whole=m.group(2) is None):

@@ -21,6 +21,12 @@ def facts() -> Facts:
     return f
 
 
+@pytest.mark.parametrize("text", ["", "   ", "\n\t"])
+def test_empty_answer_is_rejected(text: str) -> None:
+    v = validate(text, facts())
+    assert not v.ok and v.problems == ["empty answer"]
+
+
 @pytest.mark.parametrize(
     "text",
     [

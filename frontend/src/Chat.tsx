@@ -76,7 +76,15 @@ export function Chat({ history, enabled, maxChars, onCanvas, onProfile, onLimit 
         )}
         {msgs.map((m, i) => (
           <div key={i} className={`msg ${m.role}`}>
-            {m.role === "assistant" ? <Markdown text={m.content || "…"} /> : <p>{m.content}</p>}
+            {m.role !== "assistant" ? (
+              <p>{m.content}</p>
+            ) : m.content ? (
+              <Markdown text={m.content} />
+            ) : busy && i === msgs.length - 1 ? (
+              <Markdown text="…" />
+            ) : (
+              <p className="notice">{EMPTY_REPLY}</p>
+            )}
             {m.citations && m.citations.length > 0 && (
               <div className="chips" aria-label="Sources">
                 {dedupeSources(m.citations).map((s) => (
@@ -123,6 +131,9 @@ export function Chat({ history, enabled, maxChars, onCanvas, onProfile, onLimit 
     </section>
   );
 }
+
+// A finished turn with no text must not look like it is still loading (QA #7).
+export const EMPTY_REPLY = "No answer came back for this message. Please ask again.";
 
 function dedupeSources(c: Record<string, unknown>[]): string[] {
   const s = new Set<string>();

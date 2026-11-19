@@ -203,6 +203,20 @@ def test_validator_fallback_to_deterministic_summary(engine: Engine) -> None:
     assert res.validation == "fallback" and "$49" not in res.text and "H0028_028_0" in res.text
 
 
+def test_empty_answers_fall_back_to_deterministic_summary(engine: Engine) -> None:
+    # QA #7: a validator rejection followed by an empty second attempt must never return an empty reply.
+    prov = FakeProvider(script=[call("compare_plans", {}), text("Premium $49.00."), text("  ")])
+    res = Orchestrator([prov]).run_turn(ctx(engine), [], "Explain H0028_028_0")
+    assert res.validation == "fallback" and res.text.strip() and "H0028_028_0" in res.text
+
+
+def test_empty_first_answer_is_retried(engine: Engine) -> None:
+    prov = FakeProvider(script=[call("compare_plans", {}), text(""), text("See the comparison table.")])
+    res = Orchestrator([prov]).run_turn(ctx(engine), [], "cheapest?")
+    assert res.validation == "retried" and res.text.startswith("See the comparison table.")
+    assert "empty answer" in prov.calls[-1][1][-1].content
+
+
 def test_provider_fallback_on_unavailable_only(engine: Engine) -> None:
     class Down:
         name, model = "anthropic", "m"
