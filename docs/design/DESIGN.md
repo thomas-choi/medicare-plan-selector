@@ -130,9 +130,12 @@ flowchart TD
 
 Database `msp` (MySQL, utf8mb4; `MYSQL_DATABASE: msp` in `docker-compose.prod.yml`). The schema is built by the Alembic migrations in `backend/alembic/versions/` (`0001` baseline, `0002` SSA county re-key + inpatient intervals, `0003` feedback context). Solid lines in the ER diagrams are real foreign keys; dotted lines are logical joins on `(plan_year, plan_key)` and similar keys that are not enforced as foreign keys, because the plan tables are rebuilt per ingest.
 
-**Overview: database → table groups → tables (primary keys in brackets).**
+**Database `msp`: overview, database → table groups → tables (primary keys in brackets).**
 
 ```mermaid
+---
+title: "Database msp: table groups and tables"
+---
 flowchart LR
     DB[("msp<br/>MySQL 8, utf8mb4")]
 
@@ -167,9 +170,12 @@ flowchart LR
     OPS --> admin_audit["admin_audit<br/>[id]"]
 ```
 
-**Public plan data: keys and references.**
+**Database `msp`: public plan data, keys and references.**
 
 ```mermaid
+---
+title: "Database msp: public plan data"
+---
 erDiagram
     ingest_run {
         bigint id PK
@@ -265,9 +271,12 @@ erDiagram
     ingest_run ||..o{ plan : "plan_year (provenance via src_ref)"
 ```
 
-**User, session and operations data: keys and references.**
+**Database `msp`: user, session and operations data, keys and references.**
 
 ```mermaid
+---
+title: "Database msp: user, session and operations data"
+---
 erDiagram
     session {
         string id_hash PK
