@@ -90,5 +90,5 @@ services:
     depends_on:
       api: { condition: service_healthy }
     ports:
-      - "127.0.0.1:${MSP_WEB_PORT:-8080}:8080"
-      - "${MSP_WEB_BIND:-}:${MSP_WEB_PORT:-8080}:8080"
+      # Blank/unset MSP_WEB_BIND = loopback only (`:-` covers both); set a LAN IP to reach the dev UI from the LAN.
+      - "${MSP_WEB_BIND:-127.0.0.1}:${MSP_WEB_PORT:-8080}:8080"
