@@ -18,16 +18,24 @@ SELECTOR := @cd backend && $(LOAD_ENV) env $(DEV_DB) uv run selector
 # node_modules, `npx tsc` downloads an unrelated npm package that happens to be called `tsc` (QA #3).
 NODE_BIN := ./node_modules/.bin
 
-.PHONY: help frontend-deps stack-up stack-down lint test test-fast test-backend test-frontend migrate ingest-dev ingest \
+.PHONY: help frontend-deps stack-up local-stack-up stack-down lint test test-fast test-backend test-frontend migrate ingest-dev ingest \
         api-dev web-dev dev-data app-up app-down app-logs precommit build-frontend purge smoke \
         prod-config prod-build prod-up prod-down prod-logs
 
 help:
 	@grep -E '^[a-z-]+:' Makefile | cut -d: -f1
 
+# Where the dev MySQL/Redis live (local stack, or another machine's stack named in .env): see scripts/devdb.sh.
+DEVDB := $(LOAD_ENV) . $(CURDIR)/scripts/devdb.sh;
+
 # --no-recreate: the dev MySQL runs on tmpfs, so recreating it (compose does that whenever its config changes)
 # would silently wipe the schema and data. To apply a changed mysql/redis config: make stack-down && make stack-up.
-stack-up:  ## MySQL 8.4 (:3307) and Redis 7.4 (:6380, no persistence) for tests
+# When .env points the URLs at another machine (e.g. ml3090 using ml3060's stack), only check that it answers.
+stack-up:  ## MySQL 8.4 (:3307) and Redis 7.4 (:6380, no persistence) for the app; local, or the remote one in .env
+	@$(DEVDB) if [ -n "$$DEV_DB_REMOTE" ]; then devdb_check_remote; else $(MAKE) --no-print-directory local-stack-up; fi
+
+# Always this machine's stack: the backend tests create msp_test_* databases and drive `docker compose` themselves.
+local-stack-up:
 	$(COMPOSE) up -d --wait --no-recreate mysql redis
 
 stack-down:
@@ -50,8 +58,10 @@ test-fast: frontend-deps  ## unit tests only, no Docker
 	cd backend && uv run pytest -q -m "not infra"
 	cd frontend && $(NODE_BIN)/vitest run
 
-test-backend: stack-up
-	cd backend && uv run pytest -q
+# Tests use the local stack on 127.0.0.1, or on MSP_DB_BIND when that publishes it on one LAN address only.
+test-backend: local-stack-up
+	@bind=$$($(LOAD_ENV) printf %s "$${MSP_DB_BIND:-}"); case "$$bind" in ""|0.0.0.0) bind=127.0.0.1;; esac; \
+	  cd backend && MSP_TEST_MYSQL_HOST="$${MSP_TEST_MYSQL_HOST:-$$bind}" uv run pytest -q
 
 test-frontend: frontend-deps
 	cd frontend && $(NODE_BIN)/vitest run
@@ -84,8 +94,9 @@ web-dev:  ## Vite dev server at http://localhost:5173 (proxies /api to :8000)
 # committed dev sample data; a database that already holds plan data (dev sample or a real `make ingest`) is untouched.
 # The check uses the same connection as `make ingest-dev` (INGEST_DATABASE_URL) and skips Redis, which ingest never uses.
 HOST_URL_HINT := Host-side make targets read DATABASE_URL, INGEST_DATABASE_URL, MIGRATOR_DATABASE_URL and REDIS_URL from \
-  .env: they must use 127.0.0.1:3307 (MySQL) and 127.0.0.1:6380 (Redis), or be left out. The names mysql:3306 and \
-  redis:6379 only resolve inside containers; docker-compose.yml sets those for the api container by itself.
+  .env: they must use 127.0.0.1:3307 / 127.0.0.1:6380 (this machine's stack) or the LAN address of the machine whose \
+  stack you use (e.g. 192.168.0.216:3307 / :6380, published there with MSP_DB_BIND), or be left out. The names \
+  mysql:3306 and redis:6379 only resolve inside containers.
 dev-data: stack-up  ## load the dev sample data only if the plan database is empty
 	@cd backend && $(LOAD_ENV) env $(DEV_DB) sh -c 'DATABASE_URL="$$INGEST_DATABASE_URL" exec uv run selector check-data --data-only' 2>/dev/null; rc=$$?; \
 	  if [ $$rc -eq 3 ]; then \
@@ -98,7 +109,8 @@ dev-data: stack-up  ## load the dev sample data only if the plan database is emp
 
 # Only the app services (api, web) are built/recreated; MySQL and Redis are started if needed but never recreated.
 app-up: stack-up dev-data  ## API + nginx web UI in Docker on http://$${MSP_WEB_BIND:-127.0.0.1}:$${MSP_WEB_PORT:-8080}
-	@$(COMPOSE) --profile app up -d --build --wait --no-deps api web || { \
+	@$(DEVDB) [ -z "$$DEV_DB_REMOTE" ] || echo "api container uses the dev MySQL/Redis on $$DEV_DB_HOST"; \
+	  $(COMPOSE) --profile app up -d --build --wait --no-deps api web || { \
 	  echo "" >&2; \
 	  echo "ERROR: the API did not become ready. Last API log lines:" >&2; \
 	  $(COMPOSE) --profile app logs --tail 15 api >&2; \

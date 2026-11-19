@@ -1,4 +1,5 @@
-# Local development and test stack. Ports bind to 127.0.0.1 only; passwords here are dev-only placeholders.
+# Local development and test stack. Ports bind to 127.0.0.1 unless MSP_DB_BIND / MSP_WEB_BIND say otherwise;
+# passwords here are dev-only placeholders (public in this repo), so publish MySQL/Redis only on a trusted LAN.
 # Production uses docker-compose.prod.yml with secrets from the server .env.
 name: msp
 
@@ -8,7 +9,8 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: dev-root-pw
     ports:
-      - "127.0.0.1:${MSP_MYSQL_PORT:-3307}:3306"
+      # MSP_DB_BIND=<this machine's LAN IP> lets another coding host use this stack (README); blank = loopback.
+      - "${MSP_DB_BIND:-127.0.0.1}:${MSP_MYSQL_PORT:-3307}:3306"
     volumes:
       - ./deploy/mysql:/docker-entrypoint-initdb.d:ro
     tmpfs:
@@ -35,7 +37,7 @@ services:
       - --maxmemory-policy
       - volatile-ttl
     ports:
-      - "127.0.0.1:${MSP_REDIS_PORT:-6380}:6379"
+      - "${MSP_DB_BIND:-127.0.0.1}:${MSP_REDIS_PORT:-6380}:6379"
     tmpfs:
       - /data
     ulimits:

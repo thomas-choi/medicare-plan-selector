@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 
 from selector.config import REPO_ROOT
 
@@ -56,7 +58,62 @@ def test_app_up_never_recreates_the_tmpfs_stack() -> None:
     assert "--no-deps" in up and up.split("--no-deps", 1)[1].split("||")[0].split() == ["api", "web"]
     assert "make ingest-dev" in "\n".join(body)
     _, stack = _recipe("stack-up")
-    assert "--no-recreate" in stack[0]
+    assert "local-stack-up" in stack[0]
+    _, local = _recipe("local-stack-up")
+    assert "--no-recreate" in local[0]
+    prereqs, _ = _recipe("test-backend")
+    assert prereqs.split() == ["local-stack-up"]  # tests always use this machine's stack
+
+
+DEVDB = REPO_ROOT / "scripts" / "devdb.sh"
+
+
+def _devdb(env: dict[str, str]) -> dict[str, str]:
+    """Source scripts/devdb.sh in a clean bash with `env` and return what it sets."""
+    out = subprocess.run(  # noqa: S603
+        [  # noqa: S607
+            "bash",
+            "-c",
+            f'. "{DEVDB}"; for v in DEV_DB_HOST DEV_DB_PORT DEV_REDIS_HOST DEV_REDIS_PORT DEV_DB_REMOTE; do '
+            'printf "%s=%s\\n" "$v" "${!v}"; done; env | grep -E "^COMPOSE_" || true',
+        ],
+        env={"PATH": os.environ["PATH"], **env},
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    return dict(line.split("=", 1) for line in out.splitlines())
+
+
+def test_devdb_local_by_default() -> None:
+    got = _devdb({})
+    assert got["DEV_DB_HOST"] == "127.0.0.1" and got["DEV_DB_REMOTE"] == ""
+    assert not any(k.startswith("COMPOSE_") for k in got)
+    got = _devdb({"INGEST_DATABASE_URL": "mysql+pymysql://u:p@127.0.0.1:3307/msp"})
+    assert got["DEV_DB_REMOTE"] == ""
+
+
+def test_devdb_remote_stack_from_env_urls() -> None:
+    """ml3090 coding host using the dev stack on ml3060 (192.0.2.16 stands in for its LAN address)."""
+    db = "mysql+pymysql://msp_api:pw@192.0.2.16:3307/msp"
+    got = _devdb(
+        {
+            "DATABASE_URL": db,
+            "INGEST_DATABASE_URL": db.replace("msp_api", "msp_ingest"),
+            "MIGRATOR_DATABASE_URL": db.replace("msp_api", "msp_migrator"),
+            "REDIS_URL": "redis://:pw@192.0.2.16:6380/0",
+        }
+    )
+    assert got["DEV_DB_REMOTE"] == "1"
+    assert (got["DEV_DB_HOST"], got["DEV_DB_PORT"]) == ("192.0.2.16", "3307")
+    assert (got["DEV_REDIS_HOST"], got["DEV_REDIS_PORT"]) == ("192.0.2.16", "6380")
+    assert got["COMPOSE_DATABASE_URL"] == db  # the api container uses the same remote stack
+    assert got["COMPOSE_REDIS_URL"] == "redis://:pw@192.0.2.16:6380/0"
+
+
+def test_devdb_explicit_compose_urls_win() -> None:
+    got = _devdb({"MSP_DB_HOST": "192.0.2.16", "COMPOSE_DATABASE_URL": "mysql+pymysql://x:y@elsewhere:3306/msp"})
+    assert got["DEV_DB_REMOTE"] == "1" and got["COMPOSE_DATABASE_URL"].endswith("@elsewhere:3306/msp")
 
 
 def test_api_healthchecks_use_readiness() -> None:

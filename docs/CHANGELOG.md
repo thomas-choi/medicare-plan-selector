@@ -203,3 +203,8 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
   database is empty (the tmpfs MySQL after `app-down`/reboot). `selector check-data` exits 3 when only the data is
   missing (1 otherwise) and takes `--data-only` (skip Redis). When the host cannot reach MySQL, `dev-data` says that
   host-side `.env` URLs must use 127.0.0.1:3307/:6380, not the container names `mysql`/`redis`.
+- Remote dev stack (coding host ml3090 using ml3060's MySQL/Redis at 192.168.0.216): `MSP_DB_BIND` in
+  `docker-compose.yml` publishes MySQL/Redis on a LAN address (default 127.0.0.1). New `scripts/devdb.sh` decides
+  from `.env` whether the dev stack is local or remote; when remote, `stack-up` only checks that it answers (with
+  instructions for the DB host), and `app-up` gives the api container the same remote URLs (`COMPOSE_*_URL`).
+  `make test` always uses the local stack (`local-stack-up`; `MSP_TEST_MYSQL_HOST` follows `MSP_DB_BIND`).
