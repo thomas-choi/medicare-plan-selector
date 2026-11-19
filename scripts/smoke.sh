@@ -21,7 +21,7 @@ c "$BASE/api/location?zip=85004" | j 'assert [x["ssa_code"] for x in d["counties
 c "$BASE/api/location?zip=85142" | j 'assert sorted(x["ssa_code"] for x in d["counties"])==["03060","03100"], d' \
   && pass "ZIP 85142 → Maricopa + Pinal (split ZIP)" || fail "ZIP 85142" || fail "ZIP 85142 → Maricopa + Pinal (split ZIP)"
 PROFILE='{"profile":{"zip":"85004","county_ssa":"03060","county_name":"Maricopa","state":"AZ",
-  "drugs":[{"name":"metformin","rxcui":"197361"},{"name":"brand drug","rxcui":"285018"}],"utilization":"medium"},"limit":3}'
+  "drugs":[{"name":"amlodipine 5 mg","rxcui":"197361"},{"name":"brand drug","rxcui":"285018"}],"utilization":"medium"},"limit":3}'
 c -H 'Content-Type: application/json' -X POST "$BASE/api/compare" -d "$PROFILE" | j '
 rows={r["plan_key"]:r for r in d["canvas"]["rows"]}
 g=rows["H0028_028_0"]

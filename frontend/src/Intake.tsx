@@ -23,6 +23,7 @@ export function Intake({ profile, maxDrugs, maxProviders, busy, onSubmit }: Prop
   const [drugQ, setDrugQ] = useState("");
   const [cands, setCands] = useState<{ rxcui: string; name: string }[]>([]);
   const [manualRx, setManualRx] = useState("");
+  const [rxErr, setRxErr] = useState<string | null>(null);
   const [doctor, setDoctor] = useState("");
   const [err, setErr] = useState<string | null>(null);
 
@@ -72,6 +73,18 @@ export function Intake({ profile, maxDrugs, maxProviders, busy, onSubmit }: Prop
     setCands([]);
     setDrugQ("");
     setManualRx("");
+  }
+
+  // RxCUI-only entry is the documented offline path (drug search needs RxNav). The typed drug name, if any, is the
+  // label; otherwise the RxCUI itself. No name lookup: the plan data has RxCUIs but no drug names.
+  function addByRxcui() {
+    setRxErr(null);
+    const rx = manualRx.trim();
+    if (!/^\d+$/.test(rx)) return setRxErr("An RxCUI is a number, e.g. 197361.");
+    if (rx.length > 10) return setRxErr("An RxCUI has 1 to 10 digits.");
+    if (p.drugs.some((d) => d.rxcui === rx)) return setRxErr(`RxCUI ${rx} is already on your list.`);
+    const name = drugQ.trim().length >= 2 ? drugQ.trim().slice(0, 120) : `RxCUI ${rx}`;
+    addDrug({ name, rxcui: rx });
   }
 
   const updateDrug = (i: number, u: Partial<Drug>) =>
@@ -169,17 +182,25 @@ export function Intake({ profile, maxDrugs, maxProviders, busy, onSubmit }: Prop
         <input
           placeholder="or RxCUI (numbers)"
           value={manualRx}
-          onChange={(e) => setManualRx(e.target.value.replace(/\D/g, ""))}
+          inputMode="numeric"
+          onChange={(e) => setManualRx(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addByRxcui();
+            }
+          }}
           aria-label="RxCUI"
         />
-        <button
-          type="button"
-          disabled={!manualRx || drugQ.trim().length < 2}
-          onClick={() => addDrug({ name: drugQ.trim(), rxcui: manualRx })}
-        >
+        <button type="button" disabled={!manualRx.trim()} onClick={addByRxcui}>
           Add by RxCUI
         </button>
       </div>
+      {rxErr && (
+        <p role="alert" className="error">
+          {rxErr}
+        </p>
+      )}
       <ul className="drugs">
         {p.drugs.map((d, i) => (
           <li key={`${d.rxcui}-${i}`}>
