@@ -69,6 +69,9 @@ the `X-Admin-Gate` header added only there (stripped everywhere else).
 ## 5. Operations
 - **Retention purge:** the `purge` service runs `selector purge` at start and every 24 h (`PURGE_INTERVAL_S`).
 - **No-save wipe:** every API start flushes `eph:*`; Redis has no persistence, so a Redis restart empties it.
+- **Readiness:** `GET /api/ready` is 503 (reason + hint) until Redis answers and plan data for `PLAN_YEAR` is
+  loaded; the API healthcheck uses it, so `make prod-up` waits for `make ingest` to have run. `/api/health` is
+  liveness only.
 - **Logs:** app logs are allowlisted (request id, method, path, status, ms). `docker compose -f docker-compose.prod.yml logs api`.
 - **Backups:** back up the `mysql-data` volume (plan data can be re-ingested; Saved sessions are encrypted).
 - **Key rotation:** set a new `PROFILE_ENC_KEY` with `PROFILE_KEY_VERSION` + 1 only together with a re-encryption

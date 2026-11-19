@@ -180,3 +180,17 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
 - Makefile: `purge`, `api-dev`, `web-dev`, `app-up/down/logs`, `smoke` (`scripts/smoke.sh`), `prod-*`.
 - README: exact test-run steps for a fresh Ubuntu 22.04 machine; `.env.example` finalized (dev-friendly
   `MAX_SESSIONS_PER_IP_PER_DAY=200`, production value 5 noted).
+
+## QA fixes (2026-11-18, qa/QA-REPORT.md)
+- #1 `.env.example`: every comment on its own line (Compose `env_file` kept `KEY=   # note` as the value and the API
+  container crashed); Settings treats a value starting with `#` as blank; a test parses the file the Compose way.
+- #2 Intake: "Add by RxCUI" works without a drug name (label `RxCUI <n>`), Enter submits, inline messages for
+  non-numeric, too-long or duplicate input.
+- #3 Makefile: frontend tools run from `frontend/node_modules/.bin`; a `frontend-deps` check says to run `npm ci`
+  instead of `npx` downloading the unrelated `tsc` package.
+- #4 Title: not reproducible in the app (no emoji anywhere in source or build); tests pin a plain-text title.
+- #5 `MSP_WEB_BIND` defaults to `127.0.0.1` (blank/unset no longer binds 0.0.0.0); LAN access documented.
+- #6 `make app-up` only builds/recreates `api` and `web`; `stack-up` uses `--no-recreate`. New `GET /api/ready` and
+  `selector check-data`; healthchecks use readiness, so a missing/empty schema fails loudly with "make ingest-dev".
+- Docs: exact test counts, `LLM_PRICE_*` needed for the budget cap, `openai_compat` with the NVIDIA API catalog,
+  RxCUI 197361 is amlodipine 5 mg (was mislabelled metformin).
