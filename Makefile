@@ -14,8 +14,11 @@ DEV_DB := \
   DATABASE_URL="$${DATABASE_URL:-mysql+pymysql://msp_api:dev-api-pw@127.0.0.1:3307/msp}" \
   REDIS_URL="$${REDIS_URL:-redis://:dev-redis-pw@127.0.0.1:6380/0}"
 SELECTOR := @cd backend && $(LOAD_ENV) env $(DEV_DB) uv run selector
+# Frontend tools come only from frontend/node_modules, never from the npm registry on the fly: without
+# node_modules, `npx tsc` downloads an unrelated npm package that happens to be called `tsc` (QA #3).
+NODE_BIN := ./node_modules/.bin
 
-.PHONY: help stack-up stack-down lint test test-fast test-backend test-frontend migrate ingest-dev ingest \
+.PHONY: help frontend-deps stack-up stack-down lint test test-fast test-backend test-frontend migrate ingest-dev ingest \
         api-dev web-dev app-up app-down app-logs precommit build-frontend purge smoke \
         prod-config prod-build prod-up prod-down prod-logs
 
@@ -28,19 +31,28 @@ stack-up:  ## MySQL 8.4 (:3307) and Redis 7.4 (:6380, no persistence) for tests
 stack-down:
 	$(COMPOSE) --profile app down
 
-lint:
-	cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy
-	cd frontend && npx tsc --noEmit && npx eslint . && npx prettier --check .
+frontend-deps:
+	@for t in tsc eslint prettier vitest; do \
+	  if [ ! -x frontend/node_modules/.bin/$$t ]; then \
+	    echo "ERROR: frontend dependencies are not installed (frontend/node_modules/.bin/$$t is missing)." >&2; \
+	    echo "       Run:  (cd frontend && npm ci)   then re-run make." >&2; \
+	    exit 1; \
+	  fi; \
+	done
 
-test-fast:  ## unit tests only, no Docker
+lint: frontend-deps
+	cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy
+	cd frontend && $(NODE_BIN)/tsc --noEmit && $(NODE_BIN)/eslint . && $(NODE_BIN)/prettier --check .
+
+test-fast: frontend-deps  ## unit tests only, no Docker
 	cd backend && uv run pytest -q -m "not infra"
-	cd frontend && npx vitest run
+	cd frontend && $(NODE_BIN)/vitest run
 
 test-backend: stack-up
 	cd backend && uv run pytest -q
 
-test-frontend:
-	cd frontend && npx vitest run
+test-frontend: frontend-deps
+	cd frontend && $(NODE_BIN)/vitest run
 
 test: lint test-backend test-frontend  ## the full cumulative regression suite
 
