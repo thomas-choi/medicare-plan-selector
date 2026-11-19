@@ -208,3 +208,14 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
   from `.env` whether the dev stack is local or remote; when remote, `stack-up` only checks that it answers (with
   instructions for the DB host), and `app-up` gives the api container the same remote URLs (`COMPOSE_*_URL`).
   `make test` always uses the local stack (`local-stack-up`; `MSP_TEST_MYSQL_HOST` follows `MSP_DB_BIND`).
+
+## WP9 — Drug search fix + design v0.4 addendum (2026-11-19, local branch `fix/drug-search`)
+- Thomas's ml3090 test: "the drugs search has no response". Reproduced: RxNav `drugs.json` returns nothing for
+  "tamsulosin 0.4 mg capsule"; the intake showed nothing for an empty result and Enter submitted the form.
+- `RxNavClient.find`: exact → ingredient name → approximate match, ranked (RxCUI 863669 first for the full string);
+  `GET /api/drugs` adds `matched_as` and `how`; lookup timeouts 4 s / 8 s; RxNav spacing 0.1 s.
+- Intake: Searching… state, found / fallback / empty status line, error alert with the RxCUI hint, Enter searches.
+- Tests: `tests/unit/test_drug_search.py`, `tests/integration/test_api_drugs.py`, `Intake.test.tsx` (+6).
+- Docs: `docs/design/DESIGN-v0.4-ADDENDUM.md` (doctors, dental, Original Medicare + Part D baseline),
+  `CHANGES-FROM-v0.3.md`, WP10–WP14 in `IMPLEMENTATION-PLAN.md`, Q12–Q21 in `OPEN-QUESTIONS.md`.
+

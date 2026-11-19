@@ -21,3 +21,20 @@ Thomas's own intake for his MVP session:
 - current plan
 - doctors he must keep
 - drug list
+
+## v0.4 open decisions (2026-11-19, `DESIGN-v0.4-ADDENDUM.md`)
+
+Defaults apply unless Thomas objects.
+
+| # | Decision | Default | Notes |
+|---|---|---|---|
+| Q12 | Merge `fix/drug-search` (`19111e0`) into `feat/mvp-wp2-8` and push | **Ask Thomas** (nothing is pushed) | Fixes comment 1; ml3090 retest steps in addendum A2.3 |
+| Q13 | Doctor effect on results | **Badges only**; optional filter "only plans that list my must-keep doctors" drops only `not_listed` | Directory data can be stale; `unknown` never drops |
+| Q14 | Register apps with carriers whose directory needs a key (Aetna first) | **Not at MVP**; show "can't check automatically" | Registration is Thomas's account/terms decision |
+| Q15 | Which carriers' directories first | **UnitedHealthcare, Humana** (public, checked 2026-11-19), then the largest others in Maricopa | – |
+| Q16 | Dental in the yearly total | **No** (separate line only when the user picks a dental-use preset) | No CMS dental price data; assumed amounts would be U |
+| Q17 | Carrier SB/EOC fetching | **Links only, after Thomas enrolls (WP14)**; no number extraction; stop for any carrier whose terms forbid automated access | CMS PBP stays the only source for numbers |
+| Q18 | Baseline PDP choice | **Lowest estimated cost for the user's drugs** (premium + drugs); lowest premium when no drugs | Alternative: user picks |
+| Q19 | Part A premium in the baseline | **$0** (40+ quarters) with a note | $328 / $597 otherwise |
+| Q20 | Medigap default in the baseline | **None** (no cap shown); user may pick G / N / HDG and enter a quote | No CMS Medigap premium data |
+| Q21 | Baseline in the ranked list | **Pinned, unranked** (`rank=null`), deltas shown on MA rows | Keeps the v0.3 ranking unchanged |

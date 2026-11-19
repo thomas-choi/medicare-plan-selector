@@ -143,3 +143,51 @@ Each package is PR-sized, with tests first. A `docs/CHANGELOG.md` entry is requi
 - No-save tests N1–N9 are green.
 - `gitleaks` is clean.
 - No PHI appears in logs.
+
+---
+
+## v0.4 work packages (Thomas's test comments 2026-11-19; design in `DESIGN-v0.4-ADDENDUM.md`)
+
+Status: **draft for Thomas's sign-off**, except WP9, which is implemented on local branch `fix/drug-search`
+(`19111e0`, not pushed). Same rules as above: cumulative tests, the worker never pushes, merges, tags or deploys.
+
+Suggested order before Thomas enrolls (Nov 24): **WP9 → WP10 → WP11 → WP12**, then WP13; WP14 after enrollment.
+
+| WP | Scope | Size | Depends on |
+|---|---|---|---|
+| **WP9** (done, local) | Drug search: `RxNavClient.find` (exact → ingredient → approximate), ranking, `matched_as`/`how` on `GET /api/drugs`, 4 s/8 s timeouts, 0.1 s spacing; intake states (Searching…, found, fallback, empty, error), Enter searches | S | – |
+| **WP10** | 2027 Medicare parameters: `medicare_params(plan_year PK, part_b_premium_cents, part_b_deductible_cents, part_b_coins_pct, part_a_deductible_cents, part_a_day61_cents, part_a_lifetime_cents, snf_day21_cents, medigap_hd_deductible_cents, src_ref)`; Alembic `0003`; seeded from `sources/2027.yaml` (values A5.2, cited); `CostParams` reads it; remove "2026 placeholder" notes | S | – |
+| **WP11** | Pinned baseline: `cost/baseline.py` (`build_baseline`), `cost/medigap.py` (G, N, HDG rules, premium optional), profile `medigap`, `delta_vs_baseline_cents`; `compare_plans` returns `baseline`; Canvas pins the row and side-by-side column; export includes it | M | WP10 |
+| **WP12** | Dental: parser `ingest/parsers/pbp_dental.py` for `pbp_b16_dental.txt`, `plan_dental` table (Alembic `0004`), fixture sample, validation (golden H0028_028_0 = $500/yr shared); `GET /api/plans/{plan_key}/benefits`; tool `get_plan_benefits`; Dental column, side-by-side section, must-haves; optional dental-use preset behind a flag | M | – |
+| **WP13** | Doctors: intake NPI pick via `GET /api/providers` with `must_keep`; `network.py` `DirectoryChecker` (Plan-Net FHIR), `sources/directories.yaml` seed (UHC, Humana first), `selector directories sync`, `insurance_plan_map`; CMS opt-out check for the baseline; `POST /api/providers/network`; tool `check_provider_network`; policy/validator change (listing status only); badges + optional filter/weight | L | WP11 (baseline badge) |
+| **WP14** (optional) | Carrier documents: `selector docs fetch` (robots check, 1 req/5 s/host, PDF only, ≤15 MB, sha256, H-number check), `plan_document` table, links in side-by-side; no value extraction | M | – |
+
+### v0.4 tests (added to the cumulative suite)
+
+| IDs | WP | What |
+|---|---|---|
+| D1–D16 | WP9 | See addendum A2.5 (implemented: 12 unit, 2 integration, 6 UI incl. the **tamsulosin 0.4 mg capsule → RxCUI 863669** regression) |
+| P1–P4 | WP10 | `medicare_params` 2027 row equals A5.2 values; every value has a `src_ref`; MA and baseline rows use $209.40 × 12; no "2026 placeholder" note remains |
+| B1 | WP11 | Baseline present on paths `ma`, `original` and `both`, and with zero drugs |
+| B2 | WP11 | Baseline PDP = lowest (premium + drug midpoint) among non-dropped PDPs; ties by plan_key (fixture with two equal PDPs) |
+| B3 | WP11 | Baseline is never dropped by must-haves; a failed must-have adds a note |
+| B4 | WP11 | Golden: Maricopa, medium use, amlodipine + brand drug → baseline medical = $292 + 20% × (allowed − $292); worst case "no limit" |
+| B5 | WP11 | Medigap G → medical OOP $292, worst case $292 + premium; N → +$20/office visit, +$50/ER; HDG capped at $3,050 |
+| B6 | WP11 | Medigap without a quote → `premium_included=false` and the note; with a quote → premium × 12 in the total |
+| B7 | WP11 | Ranking of plans is identical with and without the baseline (baseline `rank=null`) |
+| B8 | WP11 | UI: baseline is the first row, has the "Standard" badge, can't be sorted below row 1, appears in side-by-side and export |
+| DN1 | WP12 | Parser on the fixture sample: max amounts, periodicity enum, shared comprehensive max, optional supplemental flag |
+| DN2 | WP12 | Golden H0028_028_0: preventive $500/yr, comprehensive shares it, dentures 50% coinsurance, src_ref S2 b16 |
+| DN3 | WP12 | PDP and baseline rows show "No routine dental"; MA without b16 row → "No dental benefit listed" |
+| DN4 | WP12 | Must-have "Includes dental" drops only plans without preventive dental, with reason text |
+| DN5 | WP12 | Validator rejects a dental dollar amount not in a tool row |
+| P5 | WP13 | NPPES pick stores `{name, npi, must_keep}`; No-save writes nothing (N1 extended) |
+| P6 | WP13 | DirectoryChecker on recorded UHC/Humana bundles: listed / not_listed / unknown mapping; unreachable → `unavailable` within 8 s |
+| P7 | WP13 | Filter on: drops only `not_listed` must-keep doctors; `unknown`/`unavailable` never dropped |
+| P8 | WP13 | Policy: "Dr X is in network" without a `listed` row is rejected; with one it must carry the date and "call the plan" |
+| P9 | WP13 | Baseline doctor badge: opt-out list hit → "Opted out of Medicare" |
+| P10 | WP13 | Outbound requests carry only NPI and plan IDs (respx asserts no ZIP/drug/session values) |
+| CD1 | WP14 | robots.txt disallow → `skipped_robots`, no GET |
+| CD2 | WP14 | Rate limit: ≥5 s between requests to one host (fake clock) |
+| CD3 | WP14 | Non-PDF or >15 MB → rejected; PDF without the plan's H-number → `verified=false`, not shown |
+| CD4 | WP14 | Forbidden-files hook blocks any fetched PDF from being committed |

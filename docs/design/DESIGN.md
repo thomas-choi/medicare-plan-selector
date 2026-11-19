@@ -1,7 +1,7 @@
 # Medicare Plan Selector: Technical Design v0.3
 
 Repo: https://github.com/thomas-choi/medicare-plan-selector (**public**). Service: `https://med.thomas-choi.com:<MED_PUBLIC_PORT>` (**public, multi-user**).
-Status: **Signed off by Thomas 2026-11-12 with the no-save addition** (§8.5). Defaults in OPEN-QUESTIONS are accepted unless Thomas objects. Author: Philip. Implementer: Claude Code worker. Date: 2026-11-12 (MST, America/Phoenix).
+Status: **Signed off by Thomas 2026-11-12 with the no-save addition** (§8.5). **v0.4 addendum (draft, 2026-11-19): `DESIGN-v0.4-ADDENDUM.md`** adds the drug-search fix, doctors/network check, dental and the pinned Original Medicare + Part D baseline; where they differ, the addendum wins. Defaults in OPEN-QUESTIONS are accepted unless Thomas objects. Author: Philip. Implementer: Claude Code worker. Date: 2026-11-12 (MST, America/Phoenix).
 
 Key dates:
 - Open Enrollment for plan year 2027 ends **Dec 7, 2026**.
@@ -84,7 +84,7 @@ These are unchanged from v0.1 §3. **V** means verified on 2026-11-12. **D** mea
 | S4 | Quarterly SPUF with pricing. Latest is CY2026 (`SPUF_2026_20261007`); CY2027 is expected in January 2027. https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers/quarterly-prescription-drug-plan-formulary-pharmacy-network-and-pricing-information | **D/V** |
 | S5 | 2027 Star Ratings tables: https://www.cms.gov/files/zip/2027-star-ratings-data-tables-oct-8-2026.zip | **V** (HEAD) |
 | S6 | 2027 Part D standard deductible $700 and OOP threshold $2,400: https://www.cms.gov/files/document/2027-announcement.pdf | **V** |
-| S7 | 2027 Part B premium and deductible | **TBD**. Not found as of 2026-11-12. |
+| S7 | 2027 Part B premium and deductible: $209.40/mo, $292 (https://www.federalregister.gov/d/2026-23601); Part A deductible $1,776 (https://www.federalregister.gov/d/2026-23603) | **V** 2026-11-19 (v0.4 A5.2). Not found as of 2026-11-12. |
 | S8 | Plan Finder | No official public API found. Not scraped. |
 | S9 | Medigap: AZ SHIP booklet https://azship.org/wp-content/uploads/2026/09/2026-Q4-Medigap-Booklet.pdf; no CMS bulk data | **V** (PDF). Post-MVP. |
 | S10 | RxNorm API: https://lhncbc.nlm.nih.gov/RxNav/APIs/RxNormAPIs.html | **V** (live call) |
