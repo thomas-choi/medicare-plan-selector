@@ -19,7 +19,7 @@ SELECTOR := @cd backend && $(LOAD_ENV) env $(DEV_DB) uv run selector
 NODE_BIN := ./node_modules/.bin
 
 .PHONY: help frontend-deps stack-up stack-down lint test test-fast test-backend test-frontend migrate ingest-dev ingest \
-        api-dev web-dev app-up app-down app-logs precommit build-frontend purge smoke \
+        api-dev web-dev dev-data app-up app-down app-logs precommit build-frontend purge smoke \
         prod-config prod-build prod-up prod-down prod-logs
 
 help:
@@ -80,8 +80,24 @@ api-dev:  ## API on the host at http://127.0.0.1:8000 (reload on change)
 web-dev:  ## Vite dev server at http://localhost:5173 (proxies /api to :8000)
 	cd frontend && npm run dev
 
+# The dev MySQL runs on tmpfs, so after a restart (e.g. `make app-down`, a reboot) it is empty. dev-data then loads the
+# committed dev sample data; a database that already holds plan data (dev sample or a real `make ingest`) is untouched.
+# The check uses the same connection as `make ingest-dev` (INGEST_DATABASE_URL) and skips Redis, which ingest never uses.
+HOST_URL_HINT := Host-side make targets read DATABASE_URL, INGEST_DATABASE_URL, MIGRATOR_DATABASE_URL and REDIS_URL from \
+  .env: they must use 127.0.0.1:3307 (MySQL) and 127.0.0.1:6380 (Redis), or be left out. The names mysql:3306 and \
+  redis:6379 only resolve inside containers; docker-compose.yml sets those for the api container by itself.
+dev-data: stack-up  ## load the dev sample data only if the plan database is empty
+	@cd backend && $(LOAD_ENV) env $(DEV_DB) sh -c 'DATABASE_URL="$$INGEST_DATABASE_URL" exec uv run selector check-data --data-only' 2>/dev/null; rc=$$?; \
+	  if [ $$rc -eq 3 ]; then \
+	    echo "The dev plan database is empty (MySQL runs on tmpfs): loading the dev sample data (make ingest-dev)."; \
+	    $(MAKE) -C $(CURDIR) --no-print-directory ingest-dev; \
+	  elif [ $$rc -ne 0 ]; then \
+	    $(LOAD_ENV) env $(DEV_DB) sh -c 'DATABASE_URL="$$INGEST_DATABASE_URL" exec uv run selector check-data --data-only'; \
+	    echo "" >&2; echo "$(HOST_URL_HINT)" >&2; exit 1; \
+	  fi
+
 # Only the app services (api, web) are built/recreated; MySQL and Redis are started if needed but never recreated.
-app-up: stack-up  ## API + nginx web UI in Docker on http://$${MSP_WEB_BIND:-127.0.0.1}:$${MSP_WEB_PORT:-8080}
+app-up: stack-up dev-data  ## API + nginx web UI in Docker on http://$${MSP_WEB_BIND:-127.0.0.1}:$${MSP_WEB_PORT:-8080}
 	@$(COMPOSE) --profile app up -d --build --wait --no-deps api web || { \
 	  echo "" >&2; \
 	  echo "ERROR: the API did not become ready. Last API log lines:" >&2; \

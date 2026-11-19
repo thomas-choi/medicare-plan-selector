@@ -89,8 +89,20 @@ def test_check_data_cli(empty_db: dict[str, str], fixture_db: dict[str, str], mo
 
     monkeypatch.setenv("DATABASE_URL", empty_db["api"])
     get_settings.cache_clear()
-    assert main(["check-data"]) == 1
+    assert main(["check-data"]) == 3  # data missing: make app-up auto-loads the dev data
     assert "make ingest-dev" in capsys.readouterr().err
     monkeypatch.setenv("DATABASE_URL", fixture_db["api"])
     get_settings.cache_clear()
     assert main(["check-data"]) == 0
+
+
+def test_check_data_only_skips_redis(fixture_db: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+    # Host-side `make dev-data`: .env may set REDIS_URL to the container name, which the host cannot resolve.
+    from selector.cli import main
+    from selector.config import get_settings
+
+    monkeypatch.setenv("DATABASE_URL", fixture_db["api"])
+    monkeypatch.setenv("REDIS_URL", "redis://:x@127.0.0.1:1/0")
+    get_settings.cache_clear()
+    assert main(["check-data"]) == 1
+    assert main(["check-data", "--data-only"]) == 0

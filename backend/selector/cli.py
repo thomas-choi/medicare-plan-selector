@@ -56,6 +56,9 @@ def cmd_ephemeral_flush(args: argparse.Namespace) -> int:
     return 0
 
 
+EXIT_NO_DATA = 3
+
+
 def cmd_check_data(args: argparse.Namespace) -> int:
     """Print a loud, actionable error when the API would not be ready (run by the container entrypoint)."""
     import redis
@@ -66,7 +69,8 @@ def cmd_check_data(args: argparse.Namespace) -> int:
     s = get_settings()
     eng = make_engine(s.database_url)
     try:
-        r = readiness.check(eng, redis.Redis.from_url(s.redis_url, socket_connect_timeout=5), s.plan_year)
+        rc = None if args.data_only else redis.Redis.from_url(s.redis_url, socket_connect_timeout=5)
+        r = readiness.check(eng, rc, s.plan_year)
     finally:
         eng.dispose()
     if r.ok:
@@ -74,7 +78,8 @@ def cmd_check_data(args: argparse.Namespace) -> int:
         return 0
     bar = "!" * 78
     print(f"{bar}\nNOT READY ({r.reason}, plan year {s.plan_year}):\n{r.hint}\n{bar}", file=sys.stderr)
-    return 1
+    # 3 = only the plan data is missing (`make app-up` then loads the dev sample data); 1 = anything else.
+    return EXIT_NO_DATA if r.reason in ("schema_missing", "no_plan_data") else 1
 
 
 def cmd_purge(args: argparse.Namespace) -> int:
@@ -201,7 +206,10 @@ def build_parser() -> argparse.ArgumentParser:
     f = sub.add_parser("ephemeral-flush", help="delete all No-save (eph:*) keys; run at API start")
     f.set_defaults(func=cmd_ephemeral_flush)
 
-    cd = sub.add_parser("check-data", help="exit 1 with a fix-it message if Redis or the plan data is missing")
+    cd = sub.add_parser(
+        "check-data", help="fix-it message; exit 3 if the plan data is missing, 1 if MySQL/Redis are not reachable"
+    )
+    cd.add_argument("--data-only", action="store_true", help="skip the Redis check (used by `make dev-data`)")
     cd.set_defaults(func=cmd_check_data)
 
     pg = sub.add_parser(

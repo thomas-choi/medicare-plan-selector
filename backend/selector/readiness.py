@@ -47,11 +47,13 @@ def _mysql_code(e: DBAPIError) -> int | None:
     return args[0] if args and isinstance(args[0], int) else None
 
 
-def check(engine: Engine, redis_client: object, plan_year: int) -> Readiness:
-    try:
-        redis_client.ping()  # type: ignore[attr-defined]
-    except Exception:  # noqa: BLE001 - any Redis failure means not ready
-        return Readiness(False, "redis_unavailable", HINT_REDIS)
+def check(engine: Engine, redis_client: object | None, plan_year: int) -> Readiness:
+    """`redis_client=None` checks only MySQL and the plan data."""
+    if redis_client is not None:
+        try:
+            redis_client.ping()  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001 - any Redis failure means not ready
+            return Readiness(False, "redis_unavailable", HINT_REDIS)
     try:
         with engine.connect() as conn:
             found = conn.execute(select(literal(1)).select_from(plan).where(plan.c.plan_year == plan_year).limit(1))

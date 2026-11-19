@@ -39,8 +39,8 @@ It starts MySQL and Redis in Docker; tests use throwaway `msp_test_*` databases 
 ```bash
 make test
 ```
-Expected (as of the QA fixes): ruff/mypy/tsc/eslint/prettier clean, **296 backend tests passed** (0 skipped) and
-**26 Vitest tests passed** (9 files). If `npm ci` was skipped, `make` stops with "frontend dependencies are not
+Expected (as of the QA fixes): ruff/mypy/tsc/eslint/prettier clean, **302 backend tests passed** (0 skipped) and
+**27 Vitest tests passed** (10 files). If `npm ci` was skipped, `make` stops with "frontend dependencies are not
 installed ... Run: (cd frontend && npm ci)".
 (The tests wipe `eph:*` and `quota:*` keys in the dev Redis, so don't run them while you test the UI.)
 
@@ -48,13 +48,20 @@ installed ... Run: (cd frontend && npm ci)".
 ```bash
 make stack-up        # MySQL 127.0.0.1:3307 + Redis 127.0.0.1:6380 (both tmpfs: data is gone after stack-down)
 make ingest-dev      # schema + grants + committed CMS sample fixtures (Maricopa/Pinal, AZ) + dev ZIP→county rows
-make app-up          # builds/recreates only the API and web UI → http://127.0.0.1:8080 (never recreates MySQL/Redis)
+make app-up          # loads the dev data if the DB is empty, then builds/recreates only the API and web UI
+                     # → http://127.0.0.1:8080 (never recreates MySQL/Redis)
 make smoke           # health, readiness, config, No-save session, ZIP lookups, Maricopa compare (golden H0028_028_0 row), chat, erase
 ```
-MySQL and Redis run on tmpfs: `make stack-down`/`app-down` (or a reboot) empties them, so run `make ingest-dev`
-again afterwards. If the data is missing, the API reports not ready (`curl http://127.0.0.1:8000/api/ready` shows the
-reason) and `make app-up` fails with the last API log lines and "make ingest-dev && make app-up" instead of starting
-a UI that only says "unavailable".
+MySQL and Redis run on tmpfs: `make stack-down`/`app-down` (or a reboot) empties them. `make app-up` notices an
+empty plan database and runs `make ingest-dev` by itself (`make dev-data` does only that step); a database that
+already holds data, e.g. from `make ingest`, is left alone. If the data is still missing, the API reports not ready
+(`curl http://127.0.0.1:8000/api/ready` shows the reason) and `make app-up` fails with the last API log lines instead
+of starting a UI that only says "unavailable".
+**Gotcha:** host-side targets (`ingest-dev`, `migrate`, `dev-data`, `api-dev`) read `DATABASE_URL`,
+`INGEST_DATABASE_URL`, `MIGRATOR_DATABASE_URL` and `REDIS_URL` from `.env`. There they must point at `127.0.0.1:3307`
+/ `127.0.0.1:6380` (or be left out); `mysql:3306` / `redis:6379` only resolve inside containers, and
+`docker-compose.yml` sets those for the API container by itself. Otherwise these targets fail with "Can't connect to
+MySQL server on 'mysql'".
 Open **http://127.0.0.1:8080**. From another computer either tunnel (`ssh -L 8080:127.0.0.1:8080 ml3090`, then open
 the same URL locally) or, on a trusted LAN, set `MSP_WEB_BIND=<ml3090's LAN IP>` (e.g. `192.168.0.216`) in `.env`,
 run `make app-up`, and open `http://192.168.0.216:8080` (the UI then answers on that IP only; `0.0.0.0` = every
@@ -94,6 +101,7 @@ mysql/redis compose config: `make stack-down && make stack-up && make ingest-dev
 | `make stack-up` / `make stack-down` | dev MySQL + Redis (tmpfs, ports 3307/6380) / stop everything |
 | `make migrate` | Alembic to head + role grants (uses `MIGRATOR_DATABASE_URL`) |
 | `make ingest-dev` | migrate + committed CMS fixtures + dev ZIP→county rows (no network) |
+| `make dev-data` | `ingest-dev`, but only if the plan database is empty (run by `app-up`) |
 | `make ingest` | migrate + real CMS 2027 ingest (network) |
 | `make app-up` / `app-down` / `app-logs` | build + (re)start only the API and web containers (`${DOCKER_USER}/medicare-plan-selector[-web]:${IMAGE_TAG}`); starts MySQL/Redis if needed, never recreates them / stop all / follow logs |
 | `make api-dev` / `make web-dev` | host-side API (:8000) / Vite dev server (:5173) |

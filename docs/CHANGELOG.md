@@ -194,3 +194,12 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
   `selector check-data`; healthchecks use readiness, so a missing/empty schema fails loudly with "make ingest-dev".
 - Docs: exact test counts, `LLM_PRICE_*` needed for the budget cap, `openai_compat` with the NVIDIA API catalog,
   RxCUI 197361 is amlodipine 5 mg (was mislabelled metformin).
+
+## QA fixes (2026-11-19, qa/QA-REPORT-2026-11-19.md)
+- #7 Chat: an empty or whitespace-only model answer is a validator rejection ("empty answer"), so the turn retries
+  once and then falls back to the deterministic summary instead of storing an empty reply. The chat UI shows "No
+  answer came back for this message. Please ask again." for a finished empty reply instead of an endless "…".
+- `make app-up` runs the new `make dev-data`, which loads the dev sample data (`ingest-dev`) only when the plan
+  database is empty (the tmpfs MySQL after `app-down`/reboot). `selector check-data` exits 3 when only the data is
+  missing (1 otherwise) and takes `--data-only` (skip Redis). When the host cannot reach MySQL, `dev-data` says that
+  host-side `.env` URLs must use 127.0.0.1:3307/:6380, not the container names `mysql`/`redis`.
