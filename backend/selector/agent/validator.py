@@ -28,9 +28,14 @@ class Facts:
     money: set[Decimal] = field(default_factory=set)
     numbers: set[Decimal] = field(default_factory=set)
     plan_keys: set[str] = field(default_factory=set)
+    listed_names: set[str] = field(default_factory=set)  # doctors a tool reported as `listed` (addendum A3.6)
 
     def add(self, obj: Any, key: str = "") -> None:
         if isinstance(obj, dict):
+            if obj.get("status") == "listed" and isinstance(obj.get("name"), str):
+                full = obj["name"].lower().removeprefix("dr. ").removeprefix("dr ").strip()
+                if full:
+                    self.listed_names.update({full, full.split()[-1]})
             for k, v in obj.items():
                 self.add(v, str(k))
         elif isinstance(obj, list | tuple):
@@ -94,5 +99,5 @@ def validate(text: str, facts: Facts) -> Validation:
     for m in PLAN_ID.finditer(text):
         if normalize_plan_id(m) not in facts.plan_keys:
             problems.append(f"unknown plan id {m.group(0)}")
-    problems += policy_problems(text)
+    problems += policy_problems(text, frozenset(facts.listed_names))
     return Validation(not problems, problems)

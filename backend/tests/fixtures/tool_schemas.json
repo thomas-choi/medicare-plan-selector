@@ -1,4 +1,37 @@
 {
+  "check_provider_network": {
+    "description": "Whether plans' public provider directories list these doctors (by NPI): listed / not_listed / unknown / unavailable, with the check date. A listing is not a guarantee: always tell the user to call the plan to confirm.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "npis": {
+          "description": "10-digit NPIs from lookup_provider",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 15,
+          "minItems": 1,
+          "title": "Npis",
+          "type": "array"
+        },
+        "plan_keys": {
+          "description": "plan IDs in the county, or BASELINE",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 60,
+          "minItems": 1,
+          "title": "Plan Keys",
+          "type": "array"
+        }
+      },
+      "required": [
+        "npis",
+        "plan_keys"
+      ],
+      "type": "object"
+    }
+  },
   "compare_plans": {
     "description": "Rank all plans in the user's county and return the top N (max 5) with the checklist, plus the pinned 'Original Medicare + Part D (standard)' baseline (unranked; compare plans against it).",
     "parameters": {
@@ -123,6 +156,11 @@
               "default": null,
               "title": "Dental Min Max Cents"
             },
+            "doctors_listed": {
+              "default": false,
+              "title": "Doctors Listed",
+              "type": "boolean"
+            },
             "max_monthly_premium_cents": {
               "anyOf": [
                 {
@@ -187,6 +225,13 @@
         "WeightsIn": {
           "additionalProperties": false,
           "properties": {
+            "doctor_fit": {
+              "default": 0.0,
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Doctor Fit",
+              "type": "number"
+            },
             "must_have_fit": {
               "default": 0.1,
               "maximum": 1,
@@ -318,7 +363,7 @@
     }
   },
   "lookup_provider": {
-    "description": "Find a doctor's NPI. Network status is never known: tell the user to call the plan.",
+    "description": "Find a doctor's NPI (NPPES). Use check_provider_network for directory listings.",
     "parameters": {
       "additionalProperties": false,
       "properties": {

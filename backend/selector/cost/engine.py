@@ -6,6 +6,7 @@ Carrier and plan names are never inputs. Ties break by `plan_key`, so the order 
 
 from __future__ import annotations
 
+import datetime as dt
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
@@ -58,6 +59,7 @@ class MustHaves:
     max_monthly_premium_cents: int | None = None
     dental: bool = False  # "Includes dental": at least preventive dental, without an extra premium
     dental_min_max_cents: int | None = None  # "Dental maximum at least $X" (yearly equivalent)
+    doctors_listed: bool = False  # drop plans whose directory doesn't list a must-keep doctor (addendum A3.3)
 
 
 @dataclass(frozen=True)
@@ -91,6 +93,7 @@ class PlanEstimate:
     rank: int | None = None
     delta_vs_baseline_cents: int | None = None
     dental: PlanDental | None = None
+    doctors: list[dict[str, Any]] = field(default_factory=list)  # listing status per doctor (network.Listing)
 
     @property
     def total_est_cents(self) -> int:
@@ -100,6 +103,10 @@ class PlanEstimate:
     def must_have_fit(self) -> float:
         n = len(self.drugs.drugs)
         return 1.0 if n == 0 else self.drugs_covered / n
+
+    @property
+    def doctor_fit(self) -> float:
+        return doctor_fit(self.doctors)
 
     def dental_row(self) -> dict[str, Any]:
         if self.dental is not None:
@@ -141,6 +148,7 @@ class PlanEstimate:
             "rank": self.rank,
             "delta_vs_baseline_cents": self.delta_vs_baseline_cents,
             "dental": self.dental_row(),
+            "doctors": self.doctors,
             "notes": self.notes,
             "src_ref": self.src_refs,
         }
@@ -179,6 +187,32 @@ def estimate_plan(
     return est
 
 
+DOCTOR_FIT = {"listed": 1.0, "original_medicare": 1.0, "unknown": 0.5, "unavailable": 0.5, "not_listed": 0.0,
+              "opted_out": 0.0}  # fmt: skip
+
+
+def doctor_fit(doctors: list[dict[str, Any]]) -> float:
+    """Share of must-keep doctors (with an NPI) listed; can't-check counts 0.5. No must-keep doctors → 1."""
+    scored = [DOCTOR_FIT[d["status"]] for d in doctors if d.get("must_keep") and d["status"] in DOCTOR_FIT]
+    return 1.0 if not scored else sum(scored) / len(scored)
+
+
+def doctor_drop_reason(doctors: list[dict[str, Any]]) -> str | None:
+    """Only `not_listed` / `opted_out` must-keep doctors drop a plan; unknown/unavailable never do (Q13)."""
+    for d in doctors:
+        if not d.get("must_keep"):
+            continue
+        when = ""
+        if d.get("checked_at"):
+            day = dt.date.fromisoformat(d["checked_at"])
+            when = f" (checked {day:%b} {day.day})"
+        if d["status"] == "not_listed":
+            return f"Your doctor {d['name']} isn't in this plan's directory{when}."
+        if d["status"] == "opted_out":
+            return f"Your doctor {d['name']} has opted out of Medicare{when}."
+    return None
+
+
 def drop_reason(e: PlanEstimate, profile: CostProfile) -> str | None:
     p, mh = e.plan, profile.must_haves
     if profile.path == "ma" and e.path != "ma":
@@ -204,6 +238,8 @@ def drop_reason(e: PlanEstimate, profile: CostProfile) -> str | None:
     if mh.max_monthly_premium_cents is not None and p.monthly_premium_cents > mh.max_monthly_premium_cents:
         return "Monthly premium is above your budget."
     if reason := dental_drop_reason(e.dental, mh.dental, mh.dental_min_max_cents):
+        return reason
+    if mh.doctors_listed and (reason := doctor_drop_reason(e.doctors)):
         return reason
     if not e.drugs.estimable:
         return "CMS withheld this plan's drug data; drug costs can't be estimated (check Plan Finder)."
@@ -234,12 +270,18 @@ def rank(estimates: list[PlanEstimate], profile: CostProfile) -> list[PlanEstima
     kept = [e for e in estimates if e.dropped_reason is None]
     dropped = sorted((e for e in estimates if e.dropped_reason is not None), key=lambda e: e.plan.plan_key)
     w = profile.weights
-    total_w = (w.total_cost + w.worst_case + w.stars + w.must_have_fit) or 1.0
+    total_w = (w.total_cost + w.worst_case + w.stars + w.must_have_fit + w.doctor_fit) or 1.0
     cost_n = _norm_lower_better([float(e.total_est_cents) for e in kept])
     worst_n = _norm_lower_better([None if e.worst_case_cents is None else float(e.worst_case_cents) for e in kept])
     for e, c, wc in zip(kept, cost_n, worst_n, strict=True):
         stars = float(e.plan.star_overall) / 5 if e.plan.star_overall is not None else 0.5  # unrated: neutral
-        e.score = (w.total_cost * c + w.worst_case * wc + w.stars * stars + w.must_have_fit * e.must_have_fit) / total_w
+        e.score = (
+            w.total_cost * c
+            + w.worst_case * wc
+            + w.stars * stars
+            + w.must_have_fit * e.must_have_fit
+            + w.doctor_fit * e.doctor_fit
+        ) / total_w
     kept.sort(key=lambda e: (-(e.score or 0.0), e.plan.plan_key))
     for i, e in enumerate(kept, start=1):
         e.rank = i
@@ -266,10 +308,13 @@ def compare(
     profile: CostProfile,
     params: CostParams,
     dental: dict[str, PlanDental] | None = None,
+    doctors: dict[str, list[dict[str, Any]]] | None = None,
 ) -> list[PlanEstimate]:
-    dental = dental or {}
+    dental, doctors = dental or {}, doctors or {}
     ests = [
         estimate_plan(p, rx.get(p.plan_key), med.get(p.plan_key), profile, params, dental.get(p.plan_key))
         for p in plans
     ]
+    for e in ests:
+        e.doctors = doctors.get(e.plan.plan_key, [])
     return rank(ests, profile)

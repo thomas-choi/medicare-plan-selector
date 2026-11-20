@@ -157,3 +157,49 @@ describe("dental (WP12)", () => {
     expect(calls.map((c) => c.key)).toEqual(["GET /api/plans/H0028_028_0/benefits"]); // no call for plan B
   });
 });
+
+describe("doctor listing badges (WP13)", () => {
+  const doc = (name: string, status: string, text: string) => ({
+    npi: "1234567893",
+    name,
+    must_keep: true,
+    status: status as "listed",
+    text,
+    checked_at: "2026-11-19",
+  });
+
+  it("summarizes per row and shows each doctor's status side by side", async () => {
+    const { BASELINE, ROWS_VS_BASELINE } = await import("./testdata");
+    const a = {
+      ...ROWS_VS_BASELINE[0],
+      doctors: [
+        doc("Ana Test", "listed", "✓ Listed in the plan's directory (checked Nov 19). Call to confirm."),
+        doc(
+          "Bo Test",
+          "not_listed",
+          "Not found in the plan's directory (checked Nov 19). May be out of network: call the plan.",
+        ),
+        doc("Cy Test", "unknown", "Couldn't check this plan's directory. Call the plan."),
+      ],
+    };
+    const base = {
+      ...BASELINE,
+      doctors: [
+        doc(
+          "Ana Test",
+          "original_medicare",
+          "Original Medicare: any doctor who accepts Medicare. Not on the opt-out list (checked Nov 19).",
+        ),
+      ],
+    };
+    const { unmount } = render(<PlanTable rows={[a]} baseline={base} selected={[]} onSelect={() => {}} />);
+    expect(screen.getByText("1 of 3 listed · 1 not found · 1 can't check")).toBeInTheDocument();
+    expect(screen.getByText("Any doctor who accepts Medicare")).toBeInTheDocument();
+    unmount();
+    render(<SideBySide rows={[a]} fallback={[a]} baseline={base} />);
+    expect(
+      screen.getByText(/Listed in the plan's directory \(checked Nov 19\)\. Call to confirm\./),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Not on the opt-out list/)).toBeInTheDocument();
+  });
+});

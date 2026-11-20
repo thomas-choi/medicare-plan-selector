@@ -1,0 +1,59 @@
+# Public provider directory APIs (design v0.4 addendum A3). CMS-9115-F requires every MA organization to run a
+# public Provider Directory API without user authentication (42 CFR 422.120); most follow HL7 Da Vinci PDex
+# Plan-Net. Public URLs only, never keys. `selector directories sync --year 2027` loads this file into
+# directory_endpoint and maps each carrier's InsurancePlan resources to our plan_key (insurance_plan_map).
+#
+# Field notes:
+#   org_patterns       case-insensitive substrings of the Landscape "Organization Marketing Name" (fallback when a
+#                      plan has no insurance_plan_map row)
+#   auth               none | app_key (needs an app registration, OPEN-QUESTIONS Q14) | unsupported
+#   plan_id_system     InsurancePlan.identifier.system that carries the CMS plan id
+#   plan_id_format     regex with named groups contract, plan, segment
+#   npi_search         supported (0 results = not listed) | unverified (0 results = can't check)
+verified_at: "2026-11-19"
+
+optout:
+  source: S14
+  title: CMS Opt Out Affidavits (data.cms.gov)
+  dataset_id: cc4e7ff6-9433-4765-b073-8bf1ce09093b
+  vintage: "Opt Out Affidavits 2026-09-01"
+  url: https://data.cms.gov/data-api/v1/dataset/{dataset_id}/data
+
+endpoints:
+  - id: uhc
+    name: UnitedHealthcare
+    org_patterns: ["UnitedHealthcare", "AARP Medicare"]
+    contract_prefixes: []
+    base_url: https://flex.optum.com/fhirpublic/R4
+    auth: none
+    plan_id_system: "urn:cms:medicare-advantage-contract"
+    plan_id_format: '^(?P<contract>[HR]\d{4})(?P<plan>\d{3})(?P<segment>\d{3})$'
+    npi_search: supported
+    notes: >-
+      Checked 2026-11-19: /metadata 200; Practitioner?identifier=<NPI> and PractitionerRole?practitioner= work;
+      InsurancePlan.identifier urn:cms:medicare-advantage-contract = H2406076000 with network references.
+
+  - id: humana
+    name: Humana
+    org_patterns: ["Humana"]
+    contract_prefixes: []
+    base_url: https://fhir.humana.com/api
+    auth: none
+    plan_id_system: "https://fhir.humana.com/documentation/glossary/PlanId"
+    plan_id_format: '^(?P<contract>[HR]\d{4})-(?P<plan>\d{3})-(?P<segment>\d{3})-(?P<year>\d{4})$'
+    npi_search: supported
+    notes: >-
+      Checked 2026-11-19: Practitioner?identifier=<NPI> works (0 results = not in the directory);
+      PractitionerRole pages hold about 100 roles and accept the Plan-Net `network` filter; InsurancePlan
+      identifier H3642-001-000-2027 with absolute network references.
+
+  - id: aetna
+    name: Aetna (CVS Health)
+    org_patterns: ["Aetna"]
+    contract_prefixes: []
+    base_url: https://apif1.aetna.com/fhir/v1/providerdirectory
+    auth: app_key
+    plan_id_system: ""
+    plan_id_format: ""
+    npi_search: unverified
+    notes: Needs an app registration on the Aetna developer portal (OPEN-QUESTIONS Q14); not called.

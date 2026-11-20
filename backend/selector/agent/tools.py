@@ -11,11 +11,12 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import Engine, select
 
 from selector import models as m
@@ -24,11 +25,13 @@ from selector.benefits.dental import NO_ROUTINE, NOT_LISTED, no_dental_row
 from selector.config import Settings
 from selector.cost import repo
 from selector.cost.baseline import Baseline, compare_with_baseline
-from selector.cost.engine import PlanEstimate, approximation_notes
+from selector.cost.engine import PlanEstimate, PlanInfo, approximation_notes
 from selector.cost.params import CostParams
+from selector.directories import plan_directories
 from selector.geo.hud import HudClient
 from selector.geo.resolve import resolve_zip
 from selector.lookups import LookupError_, NppesClient, RxNavClient
+from selector.network import CHECK_NOTE, DirectoryChecker, DoctorRef, Listing, PlanDirectory
 from selector.profile import MedigapIn, MustHavesIn, Profile, WeightsIn
 
 MAX_COMPARE = 5
@@ -83,6 +86,25 @@ class ExplainPlanArgs(ToolArgs):
     plan_key: str = Field(pattern=r"^[HRSE]\d{4}_\d{3}_\d{1,3}$")
 
 
+class CheckProviderNetworkArgs(ToolArgs):
+    npis: list[str] = Field(min_length=1, max_length=15, description="10-digit NPIs from lookup_provider")
+    plan_keys: list[str] = Field(min_length=1, max_length=60, description="plan IDs in the county, or BASELINE")
+
+    @field_validator("npis")
+    @classmethod
+    def _npis(cls, v: list[str]) -> list[str]:
+        if any(not re.fullmatch(r"\d{10}", n) for n in v):
+            raise ValueError("an NPI has 10 digits")
+        return v
+
+    @field_validator("plan_keys")
+    @classmethod
+    def _keys(cls, v: list[str]) -> list[str]:
+        if any(k != "BASELINE" and not re.fullmatch(r"[HRSE]\d{4}_\d{3}_\d{1,3}", k) for k in v):
+            raise ValueError("unknown plan id format")
+        return v
+
+
 class GetPlanBenefitsArgs(ToolArgs):
     plan_key: str = Field(pattern=r"^[HRSE]\d{4}_\d{3}_\d{1,3}$")
     category: Literal["dental"] = "dental"
@@ -110,6 +132,7 @@ class ToolContext:
     hud: HudClient | None = None
     rxnav: RxNavClient | None = None
     nppes: NppesClient | None = None
+    directory: DirectoryChecker | None = None
     feedback_hook: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None
     _vintage: str | None = None
 
@@ -145,6 +168,37 @@ def _need_county(ctx: ToolContext) -> str:
     return ctx.profile.county_ssa
 
 
+def doctor_refs(profile: Profile) -> list[DoctorRef]:
+    return [DoctorRef(p.name, p.npi, p.must_keep) for p in profile.providers]
+
+
+def doctor_statuses(
+    ctx: ToolContext, plans: list[PlanInfo], doctors: list[DoctorRef], *, baseline: bool = True
+) -> dict[str, list[dict[str, Any]]]:
+    """Listing status of each doctor for each plan (+ BASELINE): directories for MA plans, the CMS opt-out list
+    for Original Medicare rows (addendum A3). Sends only NPIs out; nothing is stored."""
+    if not doctors:
+        return {}
+    keys = [p.plan_key for p in plans] + (["BASELINE"] if baseline else [])
+    found: dict[str, dict[str, Listing]] = {}
+    if ctx.directory is not None and any(d.npi for d in doctors):
+        with ctx.engine.connect() as c:
+            pdirs, endpoints = plan_directories(c, ctx.plan_year, plans)
+        if baseline:
+            pdirs.append(PlanDirectory("BASELINE", "BASELINE", None))
+        found = ctx.directory.check(doctors, pdirs, endpoints)
+    out: dict[str, list[dict[str, Any]]] = {}
+    for k in keys:
+        rows = []
+        for d in doctors:
+            if not d.npi:
+                rows.append(Listing("no_npi", None).as_dict(d))
+            else:
+                rows.append(found.get(k, {}).get(d.npi, Listing("unavailable", None)).as_dict(d))
+        out[k] = rows
+    return out
+
+
 def run_compare_full(ctx: ToolContext) -> tuple[list[PlanEstimate], Baseline, CostParams]:
     """Rank every plan in the county and build the pinned Original Medicare + Part D baseline (addendum A5)."""
     ssa = _need_county(ctx)
@@ -155,7 +209,8 @@ def run_compare_full(ctx: ToolContext) -> tuple[list[PlanEstimate], Baseline, Co
         rx = repo.load_plan_rx(c, ctx.plan_year, plans, list(prof.drugs))
         med = repo.load_plan_medical(c, ctx.plan_year, plans)
         dental = repo.load_plan_dental(c, ctx.plan_year, plans)
-    ests, baseline = compare_with_baseline(plans, rx, med, prof, params, dental)
+    doctors = doctor_statuses(ctx, plans, doctor_refs(ctx.profile))
+    ests, baseline = compare_with_baseline(plans, rx, med, prof, params, dental, doctors)
     return ests, baseline, params
 
 
@@ -207,7 +262,8 @@ def _t_lookup_provider(ctx: ToolContext, a: LookupProviderArgs) -> dict[str, Any
     return {
         "candidates": [c.__dict__ for c in cands],
         "network_status": "unknown",
-        "note": "CMS public files don't include provider networks. Call each plan to confirm this doctor.",
+        "note": "To see whether plans list this doctor, call check_provider_network with the NPI. Listings can be "
+        "out of date: the user must call the plan to confirm.",
         "src_ref": [{"source": "S11", "vintage": "NPPES live", "row": "npi_search"}],
     }
 
@@ -348,6 +404,34 @@ def plan_benefits(ctx: ToolContext, plan_key: str, category: str = "dental") -> 
     }
 
 
+def provider_network(ctx: ToolContext, npis: list[str], plan_keys: list[str]) -> dict[str, Any]:
+    """Listing status of NPIs for plans in the user's county (and BASELINE). Raises ToolFailure."""
+    ssa = _need_county(ctx)
+    if ctx.directory is None:
+        raise ToolFailure("lookup_unavailable", "Doctor directory checks are off. Call each plan to confirm.")
+    with ctx.engine.connect() as c:
+        county = {p.plan_key: p for p in repo.plans_in_county(c, ctx.plan_year, ssa)}
+    unknown = [k for k in plan_keys if k != "BASELINE" and k not in county]
+    if unknown:
+        raise ToolFailure("unknown_plan", f"These plans aren't offered in your county: {', '.join(unknown)}.")
+    names = {p.npi: p.name for p in ctx.profile.providers if p.npi}
+    keep = {p.npi for p in ctx.profile.providers if p.npi and p.must_keep}
+    docs = [DoctorRef(names.get(n, f"NPI {n}"), n, n in keep) for n in dict.fromkeys(npis)]
+    plans = [county[k] for k in dict.fromkeys(plan_keys) if k in county]
+    rows = doctor_statuses(ctx, plans, docs, baseline="BASELINE" in plan_keys)
+    results = {k: {d["npi"]: d for d in v} for k, v in rows.items() if k in plan_keys}
+    return {
+        "checked_at": ctx.directory.today().isoformat(),
+        "results": results,
+        "note": CHECK_NOTE,
+        "src_ref": [d["source"] for v in rows.values() for d in v if d.get("source")][:20],
+    }
+
+
+def _t_check_provider_network(ctx: ToolContext, a: CheckProviderNetworkArgs) -> dict[str, Any]:
+    return provider_network(ctx, a.npis, a.plan_keys)
+
+
 def _t_get_plan_benefits(ctx: ToolContext, a: GetPlanBenefitsArgs) -> dict[str, Any]:
     return plan_benefits(ctx, a.plan_key, a.category)
 
@@ -385,8 +469,12 @@ TOOLS: dict[str, Tool] = {
         Tool("resolve_location", "Map a ZIP code to its county or counties (HUD crosswalk).", ResolveLocationArgs,
              _t_resolve_location),
         Tool("resolve_drug", "Find RxNorm drug candidates for a drug name.", ResolveDrugArgs, _t_resolve_drug),
-        Tool("lookup_provider", "Find a doctor's NPI. Network status is never known: tell the user to call the plan.",
+        Tool("lookup_provider", "Find a doctor's NPI (NPPES). Use check_provider_network for directory listings.",
              LookupProviderArgs, _t_lookup_provider),
+        Tool("check_provider_network", "Whether plans' public provider directories list these doctors (by NPI): "
+             "listed / not_listed / unknown / unavailable, with the check date. A listing is not a guarantee: "
+             "always tell the user to call the plan to confirm.", CheckProviderNetworkArgs,
+             _t_check_provider_network),
         Tool("search_plans", "List every plan offered in the user's county with basic facts.", SearchPlansArgs,
              _t_search_plans),
         Tool("filter_plans", "Change the user's path, must-haves, weights, utilization or the baseline's Medigap "

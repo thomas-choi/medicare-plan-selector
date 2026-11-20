@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from selector.benefits.dental import NO_ROUTINE_ORIGINAL, PlanDental, no_dental_row
-from selector.cost.engine import CostProfile, PlanEstimate, PlanInfo, compare
+from selector.cost.engine import CostProfile, PlanEstimate, PlanInfo, compare, doctor_drop_reason
 from selector.cost.medical import PlanMedical
 from selector.cost.medigap import LABEL, MedigapResult, apply_medigap
 from selector.cost.params import CostParams
@@ -54,6 +54,7 @@ class Baseline:
     params: CostParams
     profile: CostProfile
     notes: list[str] = field(default_factory=list)
+    doctors: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def part_b_annual_cents(self) -> int:
@@ -165,6 +166,7 @@ class Baseline:
             "rank": None,
             "delta_vs_baseline_cents": 0,
             "dental": no_dental_row(NO_ROUTINE_ORIGINAL),
+            "doctors": self.doctors,
             "components": self.components(),
             "medigap": {
                 "plan": self.medigap.plan,
@@ -195,17 +197,24 @@ def must_have_notes(b: Baseline) -> list[str]:
         notes.append("Doesn't meet your must-have: the monthly premium is above your budget.")
     if mh.dental or mh.dental_min_max_cents is not None:
         notes.append("Doesn't meet your must-have: Original Medicare doesn't cover routine dental.")
+    if mh.doctors_listed and (reason := doctor_drop_reason(b.doctors)):
+        notes.append(f"Doesn't meet your must-have: {reason[0].lower()}{reason[1:]}")
     return notes
 
 
-def build_baseline(estimates: list[PlanEstimate], profile: CostProfile, params: CostParams) -> Baseline:
+def build_baseline(
+    estimates: list[PlanEstimate],
+    profile: CostProfile,
+    params: CostParams,
+    doctors: list[dict[str, Any]] | None = None,
+) -> Baseline:
     """Build the baseline from the estimates `compare()` already made (PDP rows are estimated on every path).
-    The Medigap assumption and quote come from the profile."""
+    The Medigap assumption and quote come from the profile; `doctors` are the opt-out-list statuses."""
     pdp = choose_pdp(estimates, profile)
     mg = apply_medigap(
         profile.medigap_plan, profile.utilization, params.medicare, profile.medigap_premium_monthly_cents
     )
-    b = Baseline(pdp, mg, params, profile)
+    b = Baseline(pdp, mg, params, profile, doctors=list(doctors or []))
     notes = [PART_A_NOTE]
     if pdp is None:
         notes.append("No stand-alone drug plan (PDP) with estimable drug costs is offered in your county.")
@@ -232,9 +241,10 @@ def compare_with_baseline(
     profile: CostProfile,
     params: CostParams,
     dental: dict[str, PlanDental] | None = None,
+    doctors: dict[str, list[dict[str, Any]]] | None = None,
 ) -> tuple[list[PlanEstimate], Baseline]:
     """`compare()` (unchanged ranking) plus the pinned baseline and each row's delta to it."""
-    ests = compare(plans, rx, med, profile, params, dental)
-    b = build_baseline(ests, profile, params)
+    ests = compare(plans, rx, med, profile, params, dental, doctors)
+    b = build_baseline(ests, profile, params, (doctors or {}).get(BASELINE_KEY))
     set_deltas(ests, b)
     return ests, b

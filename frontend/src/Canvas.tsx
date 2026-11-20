@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type Canvas as CanvasT, type Dental, type PlanRow } from "./api";
-import { delta, money, range, stars, worstCase } from "./format";
+import { delta, doctorSummary, money, range, stars, worstCase } from "./format";
 import { RatingWidget } from "./Feedback";
 
 type Tab = "table" | "chart" | "side_by_side" | "checklist";
@@ -163,6 +163,7 @@ export function PlanTable({
             {th("star_overall", "Stars")}
             <th>Drugs covered</th>
             <th>Dental</th>
+            <th>Your doctors</th>
             <th>vs. standard</th>
           </tr>
         </thead>
@@ -191,6 +192,7 @@ export function PlanTable({
                 {baseline.drugs_covered}/{baseline.drugs_total}
               </td>
               <td className="dental">{baseline.dental?.summary ?? "No routine dental"}</td>
+              <td>{doctorSummary(baseline.doctors, { original: true })}</td>
               <td>—</td>
             </tr>
           )}
@@ -220,6 +222,7 @@ export function PlanTable({
                 {r.drugs_covered}/{r.drugs_total}
               </td>
               <td className="dental">{r.dental?.summary ?? "No dental benefit listed"}</td>
+              <td>{doctorSummary(r.doctors, { original: r.path === "original" })}</td>
               <td>{baseline ? delta(r.delta_vs_baseline_cents) : "—"}</td>
             </tr>
           ))}
@@ -363,6 +366,22 @@ export function SideBySide({
             ))}
           </tr>
           <DentalDetails show={show} />
+          {show.some((r) => (r.doctors ?? []).length > 0) && (
+            <tr>
+              <th scope="row">Your doctors</th>
+              {show.map((r) => (
+                <td key={r.plan_key}>
+                  <ul className="doctors" aria-label={`Your doctors for ${r.plan_name}`}>
+                    {(r.doctors ?? []).map((d) => (
+                      <li key={`${d.npi ?? d.name}`} className={`doc-${d.status}`}>
+                        <strong>{d.name}</strong>: {d.text}
+                      </li>
+                    ))}
+                  </ul>
+                </td>
+              ))}
+            </tr>
+          )}
           {baseline && (
             <tr>
               <th scope="row">Notes</th>

@@ -399,3 +399,15 @@ line.worst {
 .empty {
   color: var(--muted);
 }
+
+.doctors {
+  margin: 0;
+  padding-left: 1rem;
+}
+.doc-listed {
+  color: #1b5e20;
+}
+.doc-not_listed,
+.doc-opted_out {
+  color: #8a4b00;
+}

@@ -175,3 +175,56 @@ describe("intake: dental must-haves (WP12)", () => {
     });
   });
 });
+
+describe("intake: doctors from the NPI registry (WP13)", () => {
+  it("searches by name + the county's state, adds the pick with its NPI and must-keep", async () => {
+    const calls = mockFetch({
+      "GET /api/providers": {
+        candidates: [
+          {
+            npi: "1234567893",
+            name: "Ana Test",
+            specialty: "Internal Medicine",
+            city: "PHOENIX",
+            state: "AZ",
+          },
+        ],
+        note: "",
+      },
+    });
+    const onSubmit = setup();
+    fireEvent.change(screen.getByLabelText("Doctor last name"), { target: { value: "Test" } });
+    fireEvent.change(screen.getByLabelText("Doctor first name"), { target: { value: "Ana" } });
+    fireEvent.keyDown(screen.getByLabelText("Doctor last name"), { key: "Enter" });
+    fireEvent.click(await screen.findByRole("button", { name: /Add Ana Test, Internal Medicine, PHOENIX/ }));
+    expect(onSubmit).not.toHaveBeenCalled(); // Enter searched, it didn't submit the form
+    fireEvent.click(screen.getByLabelText("Must keep Ana Test"));
+    fireEvent.click(screen.getByLabelText(/Only plans whose directory lists all my must-keep doctors/));
+    fireEvent.click(screen.getByRole("button", { name: "Compare plans" }));
+    const sent = onSubmit.mock.calls[0][0];
+    expect(sent.providers).toEqual([
+      {
+        must_keep: true,
+        name: "Ana Test",
+        npi: "1234567893",
+        specialty: "Internal Medicine",
+        city: "PHOENIX",
+      },
+    ]);
+    expect(sent.must_haves.doctors_listed).toBe(true);
+    expect(calls[0].key).toBe("GET /api/providers");
+  });
+
+  it("offers adding the typed name without checking when nothing is found", async () => {
+    mockFetch({ "GET /api/providers": { candidates: [], note: "" } });
+    const onSubmit = setup();
+    fireEvent.change(screen.getByLabelText("Doctor last name"), { target: { value: "Nobody" } });
+    fireEvent.click(screen.getByRole("button", { name: "Find doctor" }));
+    expect(await screen.findByText(/No doctor found/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add “Nobody” without checking" }));
+    expect(screen.getByText("not checked")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Must keep Nobody")).not.toBeInTheDocument(); // no NPI, nothing to check
+    fireEvent.click(screen.getByRole("button", { name: "Compare plans" }));
+    expect(onSubmit.mock.calls[0][0].providers).toEqual([{ must_keep: false, name: "Nobody" }]);
+  });
+});

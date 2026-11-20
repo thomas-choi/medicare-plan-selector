@@ -56,12 +56,14 @@ DAYS_SUPPLY = (30, 60, 90)
 
 @dataclass(frozen=True)
 class Weights:
-    """User weights for the neutral score (DESIGN §6.3). Only these four inputs exist; there are no sponsor fields."""
+    """User weights for the neutral score (DESIGN §6.3). Only these inputs exist; there are no sponsor fields."""
 
     total_cost: float = 0.6
     worst_case: float = 0.2
     stars: float = 0.1
     must_have_fit: float = 0.1
+    # Share of must-keep doctors listed in the plan's directory (unknown counts 0.5). 0 by default (addendum A3.3).
+    doctor_fit: float = 0.0
 
     def as_dict(self) -> dict[str, float]:
         return {
@@ -69,6 +71,7 @@ class Weights:
             "worst_case": self.worst_case,
             "stars": self.stars,
             "must_have_fit": self.must_have_fit,
+            "doctor_fit": self.doctor_fit,
         }
 
 

@@ -40,8 +40,14 @@ class DrugIn(_Strict):
 
 
 class ProviderIn(_Strict):
+    """A doctor: free-text name, or picked from the NPI registry (`npi` set). Only `must_keep` doctors with an NPI
+    count for the optional directory filter and weight (addendum A3.3)."""
+
     name: str = Field(min_length=1, max_length=120)
     npi: str | None = Field(default=None, pattern=r"^\d{10}$")
+    must_keep: bool = False
+    specialty: str | None = Field(default=None, max_length=120)
+    city: str | None = Field(default=None, max_length=64)
 
 
 class MustHavesIn(_Strict):
@@ -52,6 +58,7 @@ class MustHavesIn(_Strict):
     max_monthly_premium_cents: int | None = Field(default=None, ge=0, le=10_000_000)
     dental: bool = False
     dental_min_max_cents: int | None = Field(default=None, ge=0, le=10_000_000)
+    doctors_listed: bool = False
 
 
 class WeightsIn(_Strict):
@@ -59,6 +66,7 @@ class WeightsIn(_Strict):
     worst_case: float = Field(default=0.2, ge=0, le=1)
     stars: float = Field(default=0.1, ge=0, le=1)
     must_have_fit: float = Field(default=0.1, ge=0, le=1)
+    doctor_fit: float = Field(default=0.0, ge=0, le=1)
 
 
 class MedigapIn(_Strict):
@@ -107,9 +115,10 @@ class Profile(_Strict):
                 max_monthly_premium_cents=mh.max_monthly_premium_cents,
                 dental=mh.dental,
                 dental_min_max_cents=mh.dental_min_max_cents,
+                doctors_listed=mh.doctors_listed,
             ),
             snp_eligible=self.snp_eligible,
-            weights=Weights(w.total_cost, w.worst_case, w.stars, w.must_have_fit),
+            weights=Weights(w.total_cost, w.worst_case, w.stars, w.must_have_fit, w.doctor_fit),
             medigap_plan=self.medigap.plan,
             medigap_premium_monthly_cents=self.medigap.monthly_premium_cents if self.medigap.plan else None,
         )
@@ -122,6 +131,7 @@ class Profile(_Strict):
             "drug_count": len(self.drugs),
             "drugs": [d.name for d in self.drugs],
             "doctor_count": len(self.providers),
+            "doctors_with_npi": sum(1 for p in self.providers if p.npi),
             "utilization": self.utilization,
             "must_haves": self.must_haves.model_dump(exclude_defaults=True),
             "snp_eligible": self.snp_eligible,

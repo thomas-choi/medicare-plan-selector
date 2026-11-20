@@ -1,6 +1,6 @@
 // Client-side "Download comparison" (DESIGN §8.5 Browser): built in memory and downloaded; nothing is stored.
 import type { Canvas, Profile } from "./api";
-import { delta, money, range, stars, worstCase } from "./format";
+import { delta, doctorSummary, money, range, stars, worstCase } from "./format";
 
 export const DISCLAIMER_TEXT =
   "This is an independent, free comparison tool. It is not a licensed insurance agent or broker and is not " +
@@ -30,17 +30,17 @@ export function comparisonMarkdown(
   if (profile?.drugs.length) out.push(`Drugs: ${profile.drugs.map((d) => d.name).join(", ")}`, "");
   const b = canvas.baseline;
   out.push(
-    "| Rank | Plan | ID | Est. yearly cost | Premium/mo | Worst case | Stars | Drugs covered | Dental | vs. standard |",
-    "|---|---|---|---|---|---|---|---|---|---|",
+    "| Rank | Plan | ID | Est. yearly cost | Premium/mo | Worst case | Stars | Drugs covered | Dental | Your doctors | vs. standard |",
+    "|---|---|---|---|---|---|---|---|---|---|---|",
   );
   if (b) {
     out.push(
-      `| Standard | ${b.plan_name} | drug plan ${b.pdp_plan_key ?? "none"} | ${range(b.total_low_cents, b.total_high_cents)} | ${money(b.monthly_premium_cents)} + Part B | ${worstCase(b)} | ${stars(null)} | ${b.drugs_covered}/${b.drugs_total} | ${b.dental?.summary ?? "No routine dental"} | — |`,
+      `| Standard | ${b.plan_name} | drug plan ${b.pdp_plan_key ?? "none"} | ${range(b.total_low_cents, b.total_high_cents)} | ${money(b.monthly_premium_cents)} + Part B | ${worstCase(b)} | ${stars(null)} | ${b.drugs_covered}/${b.drugs_total} | ${b.dental?.summary ?? "No routine dental"} | ${doctorSummary(b.doctors, { original: true })} | — |`,
     );
   }
   for (const r of ranked) {
     out.push(
-      `| ${r.rank} | ${r.plan_name.replace(/\|/g, "/")} | ${r.plan_key} | ${range(r.total_low_cents, r.total_high_cents)} | ${money(r.monthly_premium_cents)} | ${money(r.worst_case_cents, { whole: true })} | ${stars(r.star_overall)} | ${r.drugs_covered}/${r.drugs_total} | ${r.dental?.summary ?? "No dental benefit listed"} | ${b ? delta(r.delta_vs_baseline_cents) : "—"} |`,
+      `| ${r.rank} | ${r.plan_name.replace(/\|/g, "/")} | ${r.plan_key} | ${range(r.total_low_cents, r.total_high_cents)} | ${money(r.monthly_premium_cents)} | ${money(r.worst_case_cents, { whole: true })} | ${stars(r.star_overall)} | ${r.drugs_covered}/${r.drugs_total} | ${r.dental?.summary ?? "No dental benefit listed"} | ${doctorSummary(r.doctors, { original: r.path === "original" })} | ${b ? delta(r.delta_vs_baseline_cents) : "—"} |`,
     );
   }
   if (b) {

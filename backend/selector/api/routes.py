@@ -272,8 +272,33 @@ def providers(
         raise HTTPException(503, {"code": "lookup_failed", "message": "Doctor search is unavailable."}) from e
     return {
         "candidates": [c.__dict__ for c in cands],
-        "note": "CMS public files don't include provider networks. Call each plan to confirm.",
+        "note": "Pick your doctor to check each plan's public directory. Listings can be out of date: call the plan.",
     }
+
+
+class NetworkIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    npis: list[str] = Field(min_length=1, max_length=15)
+    plan_keys: list[str] = Field(min_length=1, max_length=60)
+
+
+@router.post("/providers/network")
+def providers_network(body: NetworkIn, sess: Session = Depends(current)) -> dict[str, Any]:
+    """Directory listing status of NPIs for plans in the session's county (addendum A3, A6). Only the NPIs leave
+    the server; nothing is stored."""
+    try:
+        args = T.CheckProviderNetworkArgs(npis=body.npis, plan_keys=body.plan_keys)
+    except ValueError as e:
+        raise HTTPException(422, {"code": "invalid", "message": "Check the NPIs and plan IDs."}) from e
+    profile = sess.store.load_profile(sess.h) or Profile()
+    ctx = tool_context(sess, profile, {})
+    try:
+        out = T.provider_network(ctx, args.npis, args.plan_keys)
+    except T.ToolFailure as e:
+        status = 503 if e.code == "lookup_unavailable" else 422
+        raise HTTPException(status, {"code": e.code, "message": e.user_message}) from e
+    out.pop("src_ref", None)
+    return out
 
 
 # ------------------------------------------------------------------ plan benefits (addendum A4)
@@ -325,6 +350,7 @@ def tool_context(sess: Session, profile: Profile, canvas: dict[str, Any]) -> T.T
         hud=st_.hud,
         rxnav=st_.rxnav,
         nppes=st_.nppes,
+        directory=st_.directory,
         feedback_hook=(lambda kind, d: hook(sess, kind, d)) if hook else None,
     )
 

@@ -23,6 +23,7 @@ DESIGN_TOOLS = {
     "record_feedback",
     # v0.4 addendum A6
     "get_plan_benefits",
+    "check_provider_network",
 }
 
 
