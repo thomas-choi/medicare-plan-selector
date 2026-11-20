@@ -43,7 +43,9 @@ log = logging.getLogger(__name__)
 NPI_SYSTEM = "http://hl7.org/fhir/sid/us-npi"
 NETWORK_EXT = "http://hl7.org/fhir/us/davinci-pdex-plan-net/StructureDefinition/network-reference"
 USER_AGENT = "medicare-plan-selector (+https://github.com/thomas-choi/medicare-plan-selector)"
-TIMEOUT = httpx.Timeout(8.0, connect=4.0)
+TIMEOUT = httpx.Timeout(8.0, connect=4.0)  # interactive checks
+# Admin sync only: some directories take 12-15 s per InsurancePlan page (UHC, 2026-11-19).
+SYNC_TIMEOUT = httpx.Timeout(90.0, connect=10.0)
 CACHE_TTL_S = 24 * 3600
 ROLE_PAGE = 100
 MAX_ROLE_PAGES = 5
@@ -314,7 +316,8 @@ class FhirDirectory:
     def insurance_plans(self, max_pages: int = 200) -> Iterator[dict[str, Any]]:
         """Every InsurancePlan resource, following `next` links (admin sync only)."""
         url: str | None = f"{self.ep.base_url}/InsurancePlan"
-        params: dict[str, Any] | None = {"_count": 100}
+        # `_elements` keeps pages small (UHC: 3.6 MB → 120 kB per 100 plans); servers that ignore it still work.
+        params: dict[str, Any] | None = {"_count": 100, "_elements": "identifier,network,plan"}
         pages = 0
         while url and pages < max_pages:
             b = self._get(url, params)

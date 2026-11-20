@@ -20,7 +20,7 @@ from sqlalchemy import Connection, Engine, delete, insert, select
 from selector import models as m
 from selector.cost.engine import PlanInfo
 from selector.network import (
-    TIMEOUT,
+    SYNC_TIMEOUT,
     USER_AGENT,
     Endpoint,
     FhirDirectory,
@@ -74,7 +74,7 @@ def sync_endpoint(
         return SyncResult(ep.id, 0, 0, f"auth={ep.auth}: not called")
     with engine.connect() as c:
         known = set(c.execute(select(m.plan.c.plan_key).where(m.plan.c.plan_year == year)).scalars())
-    client = http or httpx.Client(timeout=TIMEOUT, headers={"User-Agent": USER_AGENT})
+    client = http or httpx.Client(timeout=SYNC_TIMEOUT, headers={"User-Agent": USER_AGENT})
     fhir = FhirDirectory(ep, client, HostThrottle(min_interval_s))
     found: dict[str, dict[str, Any]] = {}
     seen = 0
@@ -91,8 +91,8 @@ def sync_endpoint(
             row = found.setdefault(key, new)
             row["network_refs"] = sorted(set(row["network_refs"]) | set(refs))
     except Exception as e:  # noqa: BLE001 - keep the old map for this endpoint on any failure
-        log.warning("directory sync %s failed: %s", ep.id, type(e).__name__)
-        return SyncResult(ep.id, seen, 0, type(e).__name__)
+        log.warning("directory sync %s failed after %d plans: %s: %s", ep.id, seen, type(e).__name__, e)
+        return SyncResult(ep.id, seen, 0, f"{type(e).__name__}: {e}")
     with engine.begin() as c:
         ipm = m.insurance_plan_map
         c.execute(delete(ipm).where(ipm.c.plan_year == year, ipm.c.endpoint_id == ep.id))
