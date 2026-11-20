@@ -7,11 +7,26 @@ from typing import Any
 
 from selector.cost.engine import PlanInfo
 from selector.cost.medical import Benefit, InpatientInterval, PlanMedical
-from selector.cost.params import CostParams
+from selector.cost.params import CostParams, MedicareParams
 from selector.cost.part_d import FormularyEntry, InsulinCost, PlanRx, TierCost
 
 REF: dict[str, Any] = {"source": "test", "vintage": "t", "row": "r"}
-PARAMS = CostParams(2027, 70_000, 240_000, 20_290, 28_300, "2026 placeholder", {"source": "S6", "row": "p"})
+# The 2027 amounts of addendum A5.2 (the same numbers sources/2027.yaml loads into medicare_params).
+MEDICARE = MedicareParams(
+    part_b_premium_monthly_cents=20_940,
+    part_b_deductible_cents=29_200,
+    part_b_coins_pct=20,
+    part_a_deductible_cents=177_600,
+    part_a_day61_cents=44_400,
+    part_a_lifetime_cents=88_800,
+    snf_day21_cents=22_200,
+    medigap_hd_deductible_cents=305_000,
+    medigap_n_office_copay_cents=2_000,
+    medigap_n_er_copay_cents=5_000,
+    src_ref={g: {"source": "S7" if g.startswith("part") else "S16", "vintage": "t", "row": f"medicare_params:{g}"}
+             for g in ("part_b", "part_a", "medigap_hd", "medigap_n")},
+)  # fmt: skip
+PARAMS = CostParams(2027, 70_000, 240_000, MEDICARE, {"source": "S6", "row": "p"})
 
 
 def tc(
@@ -125,3 +140,6 @@ def medical(key: str = "H0001_001_0", moop: int | None = 500_000, **benefits: tu
     return PlanMedical(
         key, moop, b, [InpatientInterval(1, 1, 6, 40_000, None, REF), InpatientInterval(2, 7, 90, 0, None, REF)]
     )
+
+
+FORM_ANY = {"1": 1, "2": 2, "3": 3}

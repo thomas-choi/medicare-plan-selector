@@ -11,7 +11,7 @@ from selector import models as m
 from selector.config import Settings
 from selector.cost.engine import PlanInfo
 from selector.cost.medical import Benefit, InpatientInterval, PlanMedical
-from selector.cost.params import CostParams
+from selector.cost.params import CostParams, MedicareParams
 from selector.cost.part_d import DrugInput, FormularyEntry, InsulinCost, PlanRx, TierCost, drug_id
 
 
@@ -19,7 +19,29 @@ class NoPlanData(LookupError):
     pass
 
 
-def load_params(conn: Connection, year: int, settings: Settings) -> CostParams:
+def load_medicare_params(conn: Connection, year: int) -> MedicareParams:
+    r = conn.execute(select(m.medicare_params).where(m.medicare_params.c.plan_year == year)).mappings().first()
+    if r is None:
+        raise NoPlanData(
+            f"no Original Medicare parameters for {year}: re-run the ingest (make ingest-dev or make ingest)"
+        )
+    return MedicareParams(
+        part_b_premium_monthly_cents=int(r["part_b_premium_cents"]),
+        part_b_deductible_cents=int(r["part_b_deductible_cents"]),
+        part_b_coins_pct=int(r["part_b_coins_pct"]),
+        part_a_deductible_cents=int(r["part_a_deductible_cents"]),
+        part_a_day61_cents=int(r["part_a_day61_cents"]),
+        part_a_lifetime_cents=int(r["part_a_lifetime_cents"]),
+        snf_day21_cents=int(r["snf_day21_cents"]),
+        medigap_hd_deductible_cents=int(r["medigap_hd_deductible_cents"]),
+        medigap_n_office_copay_cents=int(r["medigap_n_office_copay_cents"]),
+        medigap_n_er_copay_cents=int(r["medigap_n_er_copay_cents"]),
+        src_ref={k: dict(v) for k, v in dict(r["src_ref"]).items()},
+    )
+
+
+def load_params(conn: Connection, year: int, settings: Settings | None = None) -> CostParams:
+    """Part D parameters and the Original Medicare amounts for `year` (both loaded by the ingest)."""
     row = conn.execute(select(m.part_d_params).where(m.part_d_params.c.plan_year == year)).mappings().first()
     if row is None:
         raise NoPlanData(f"no Part D parameters for {year}: run the ingest (make ingest-dev or make ingest)")
@@ -27,9 +49,7 @@ def load_params(conn: Connection, year: int, settings: Settings) -> CostParams:
         plan_year=year,
         std_deductible_cents=row["std_deductible_cents"],
         oop_threshold_cents=row["oop_threshold_cents"],
-        part_b_premium_monthly_cents=settings.part_b_premium_monthly_cents,
-        part_b_deductible_cents=settings.part_b_deductible_cents,
-        part_b_vintage=settings.part_b_vintage,
+        medicare=load_medicare_params(conn, year),
         part_d_src_ref=dict(row["src_ref"]),
     )
 

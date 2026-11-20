@@ -21,7 +21,16 @@ def _scalar(conn: Connection, sql: str, **params: Any) -> Any:
 def validate_year(conn: Connection, year: int, spec: dict[str, Any], oop_thresholds: set[int]) -> list[str]:
     problems: list[str] = []
     y = {"y": year}
-    for t in ("plan", "plan_county", "pbp_benefit", "formulary", "plan_formulary", "tier_cost", "part_d_params"):
+    for t in (
+        "plan",
+        "plan_county",
+        "pbp_benefit",
+        "formulary",
+        "plan_formulary",
+        "tier_cost",
+        "part_d_params",
+        "medicare_params",
+    ):
         if _scalar(conn, f"SELECT COUNT(*) FROM `{t}` WHERE plan_year=:y", **y) == 0:  # noqa: S608
             problems.append(f"{t}: no rows for {year}")
     if _scalar(conn, "SELECT COUNT(*) FROM county") == 0:

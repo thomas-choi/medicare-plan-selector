@@ -12,11 +12,11 @@ from selector.cost.engine import CostProfile, MustHaves, compare, estimate_plan,
 from selector.cost.medical import ma_medical, original_medical
 from selector.cost.params import Weights
 from selector.cost.part_d import DrugInput
-from tests.unit.cost.factories import PARAMS, medical, plan_info, plan_rx
+from tests.unit.cost.factories import MEDICARE, PARAMS, medical, plan_info, plan_rx
 
 FORM = {"1": 1, "2": 2, "3": 3}
 GEN2 = DrugInput("generic-b", rxcui="2", user_price_cents=1_000)
-PART_B_YEAR = 20_290 * 12
+PART_B_YEAR = 20_940 * 12
 
 
 @pytest.mark.parametrize(
@@ -60,13 +60,13 @@ def test_missing_benefit_assumes_20_percent_with_note() -> None:
 
 
 def test_original_medicare_no_cap() -> None:
-    r = original_medical("low", 28_300)
+    r = original_medical("low", MEDICARE)
     allowed = 2 * 13_000 + 18_000
-    assert r.low_cents == 28_300 + round((allowed - 28_300) * 0.2)
+    assert r.low_cents == 29_200 + round((allowed - 29_200) * 0.2)
     assert r.worst_case_cents is None
 
 
-def test_pdp_plus_part_b_placeholder() -> None:
+def test_pdp_plus_part_b_2027() -> None:
     pdp = plan_info("S0001_001_0", category="PDP", premium_c=None, premium_d=730, stars=None)
     e = estimate_plan(
         pdp, plan_rx(FORM, key="S0001_001_0"), None, CostProfile(drugs=(GEN2,), utilization="low"), PARAMS
@@ -74,7 +74,7 @@ def test_pdp_plus_part_b_placeholder() -> None:
     assert e.path == "original"
     assert e.premium_annual_cents == 730 * 12
     assert e.part_b_annual_cents == PART_B_YEAR
-    assert e.total_low_cents == 730 * 12 + PART_B_YEAR + 6_000 + original_medical("low", 28_300).low_cents
+    assert e.total_low_cents == 730 * 12 + PART_B_YEAR + 6_000 + original_medical("low", MEDICARE).low_cents
     assert e.worst_case_cents is None
     assert any(r.get("source") == "S7" for r in e.src_refs)
 

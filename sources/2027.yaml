@@ -56,6 +56,35 @@ params:
     oop_threshold_cents: 240000
     citation: https://www.cms.gov/files/document/2027-announcement.pdf
     vintage: "2027 Rate Announcement"
+  # Original Medicare and Medigap amounts (design v0.4 addendum A5.2; loaded into medicare_params).
+  medicare:
+    part_b_premium_cents: 20940          # $209.40/month standard Part B premium
+    part_b_deductible_cents: 29200       # $292/year
+    part_b_coins_pct: 20
+    part_a_deductible_cents: 177600      # $1,776 per benefit period
+    part_a_day61_cents: 44400            # $444/day, days 61-90
+    part_a_lifetime_cents: 88800         # $888 per lifetime reserve day
+    snf_day21_cents: 22200               # $222/day, SNF days 21-100
+    medigap_hd_deductible_cents: 305000  # $3,050 high-deductible F/G/J
+    medigap_n_office_copay_cents: 2000   # Plan N: up to $20 per office visit
+    medigap_n_er_copay_cents: 5000       # Plan N: up to $50 per ER visit that doesn't lead to admission
+    citations:
+      part_b:
+        source: S7
+        url: https://www.federalregister.gov/d/2026-23601
+        vintage: "CMS-8094-N, 91 FR 74570 (2026-11-19)"
+      part_a:
+        source: S7
+        url: https://www.federalregister.gov/d/2026-23603
+        vintage: "CMS-8092-N (2026-11-19)"
+      medigap_hd:
+        source: S16
+        url: https://www.cms.gov/files/document/cy-2027-medigap-high-deductible-options-fjg.pdf
+        vintage: "CY2027 Medigap HD F/G/J deductible"
+      medigap_n:
+        source: S16
+        url: https://www.medicare.gov/health-drug-plans/medigap/basics/compare-plan-benefits
+        vintage: "Medicare.gov Medigap benefits chart (checked 2026-11-19)"
 
 # Ingest refuses to finish unless these rows match (IMPLEMENTATION-PLAN M1 acceptance).
 # Values verified against CY2027_Landscape_202611.csv on 2026-11-12 (zip sha256 0b479aa3…210f62f).

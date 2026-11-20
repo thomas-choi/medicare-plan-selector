@@ -144,7 +144,7 @@ def estimate_plan(
     if path == "ma":
         medical = ma_medical(med or PlanMedical(plan.plan_key, plan.moop_in_network_cents, {}), profile.utilization)
     else:
-        medical = original_medical(profile.utilization, params.part_b_deductible_cents)
+        medical = original_medical(profile.utilization, params.medicare)
     premium = plan.monthly_premium_cents * 12
     part_b = params.part_b_premium_monthly_cents * 12
     low = premium + part_b + drugs.annual_low_cents + medical.low_cents
@@ -228,8 +228,15 @@ def rank(estimates: list[PlanEstimate], profile: CostProfile) -> list[PlanEstima
 
 
 def approximation_notes(params: CostParams) -> list[str]:
+    mp = params.medicare
     notes = list(APPROXIMATION_NOTES)
     notes[0] = notes[0].replace("$2,400", f"${params.oop_threshold_cents / 100:,.0f}")
+    notes[3] = (
+        f"Every total includes the standard Part B premium (${mp.part_b_premium_monthly_cents / 100:,.2f}/month in "
+        f"{params.plan_year}). Original Medicare rows also use the ${mp.part_b_deductible_cents / 100:,.0f} Part B "
+        f"deductible, {mp.part_b_coins_pct}% coinsurance and the ${mp.part_a_deductible_cents / 100:,.0f} Part A "
+        "deductible for a hospital stay."
+    )
     return notes
 
 

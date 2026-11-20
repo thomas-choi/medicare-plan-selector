@@ -239,6 +239,24 @@ part_d_params = Table(
     Column("src_ref", JSON, nullable=False),
 )
 
+# Original Medicare / Medigap amounts per plan year (addendum A5.2), from cited values in sources/<year>.yaml.
+medicare_params = Table(
+    "medicare_params",
+    metadata,
+    Column("plan_year", SmallInteger, primary_key=True, autoincrement=False),
+    Column("part_b_premium_cents", Cents, nullable=False),  # monthly standard premium
+    Column("part_b_deductible_cents", Cents, nullable=False),
+    Column("part_b_coins_pct", SmallInteger, nullable=False),
+    Column("part_a_deductible_cents", Cents, nullable=False),  # per benefit period
+    Column("part_a_day61_cents", Cents, nullable=False),  # per day, days 61-90
+    Column("part_a_lifetime_cents", Cents, nullable=False),  # per lifetime reserve day
+    Column("snf_day21_cents", Cents, nullable=False),  # per day, SNF days 21-100
+    Column("medigap_hd_deductible_cents", Cents, nullable=False),  # high-deductible F/G/J
+    Column("medigap_n_office_copay_cents", Cents, nullable=False),  # Plan N: up to, per office visit
+    Column("medigap_n_er_copay_cents", Cents, nullable=False),  # Plan N: up to, per ER visit not admitted
+    Column("src_ref", JSON, nullable=False),  # {group: src_ref} for part_b, part_a, medigap_hd, medigap_n
+)
+
 PLAN_TABLES = (
     "ingest_run",
     "county",
@@ -253,6 +271,7 @@ PLAN_TABLES = (
     "insulin_cost",
     "drug_price_proxy",
     "part_d_params",
+    "medicare_params",
 )
 
 # ---------------------------------------------------------------- user and session data (saved mode only)

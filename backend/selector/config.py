@@ -115,12 +115,6 @@ class Settings(BaseSettings):
     # `X-Admin-Gate: <ADMIN_GATE_SECRET>`; the API refuses admin calls without it. Blank = admin API off.
     admin_gate_secret: SecretStr = SecretStr("")
 
-    # Part B placeholders (S7: 2027 values not published as of 2026-11-12). Monthly premium and yearly deductible
-    # in cents; the defaults are the CMS 2026 values and are labelled as placeholders in every estimate.
-    part_b_premium_monthly_cents: int = 20290
-    part_b_deductible_cents: int = 28300
-    part_b_vintage: str = "2026 placeholder (2027 TBD)"
-
     # Data.
     plan_year: int = 2027
     data_dir: str = "data"
