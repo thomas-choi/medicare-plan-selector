@@ -219,3 +219,26 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
 - Docs: `docs/design/DESIGN-v0.4-ADDENDUM.md` (doctors, dental, Original Medicare + Part D baseline),
   `CHANGES-FROM-v0.3.md`, WP10–WP14 in `IMPLEMENTATION-PLAN.md`, Q12–Q21 in `OPEN-QUESTIONS.md`.
 
+
+## WP10–WP13 — Design v0.4 (2026-11-19, local branch `feat/v0.4`)
+- **WP10** 2027 Medicare amounts: `medicare_params` (Alembic `0004`), loaded by the ingest from cited values in
+  `sources/2027.yaml` (Part B $209.40/month, $292 deductible; Part A $1,776; Medigap HD $3,050; Plan N copays).
+  The 2026 Part B placeholder settings (`PART_B_*`) are gone. Golden Maricopa JSON: +$78/yr, ranks unchanged.
+- **WP11** Pinned "Original Medicare + Part D (standard)" baseline in every comparison: Part A + B + the
+  lowest-cost PDP for the user's drugs, optional Medigap G / N / HDG assumption (premium only from the user's quote),
+  never ranked or dropped, `delta_vs_baseline_cents` on every row. UI: first table row with a Standard badge, first
+  side-by-side column, export; Medigap inputs in the intake. Prompt `v2`.
+- **WP12** Dental from PBP b16: parser, `plan_dental` (Alembic `0005`), validation (every MA plan has a row; golden
+  H0028_028_0 $500/yr shared), Dental column and side-by-side services, must-haves "includes dental" / "dental
+  maximum at least $X", `GET /api/plans/{plan_key}/benefits`, tool `get_plan_benefits`. Not added to totals (Q16).
+- **WP13** Doctors: NPI pick (NPPES) with must-keep; listing status from carriers' public Plan-Net directories
+  (`network.py`, `directory_endpoint` + `insurance_plan_map`, Alembic `0006`, `selector directories sync`) and the
+  CMS opt-out list for Original Medicare rows; badges by default, optional filter (drops only `not_listed` /
+  `opted_out` must-keep doctors) and `doctor_fit` weight (0 by default); `POST /api/providers/network`, tool
+  `check_provider_network`; policy accepts a listing claim only with a `listed` tool row, the date and "call the plan".
+- Live checks (2026-11-19): real offline 2027 ingest into a scratch schema passes every validation (5,561 dental
+  rows); Humana directory sync maps all 4 Humana fixture plans and a 3-doctor check takes 4.1 s; UHC pages take
+  12–15 s (sync uses a 90 s timeout and `_elements`).
+- Deviations from the addendum: the baseline's "monthly premium" cell is PDP (+ Medigap quote) with "+ Part B"
+  under it, like every other row (Part B is a separate line), instead of Part B + PDP; the dental-use cost preset
+  (OD-16, optional) and WP14 (carrier PDFs) are not implemented; Humana's NPI search works (0 results = not listed).
