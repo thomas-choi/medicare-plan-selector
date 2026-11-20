@@ -20,6 +20,7 @@ from sqlalchemy import Engine, select
 
 from selector import models as m
 from selector.agent.providers.base import ToolCall, ToolSpec
+from selector.benefits.dental import NO_ROUTINE, NOT_LISTED, no_dental_row
 from selector.config import Settings
 from selector.cost import repo
 from selector.cost.baseline import Baseline, compare_with_baseline
@@ -80,6 +81,11 @@ class ComparePlansArgs(ToolArgs):
 
 class ExplainPlanArgs(ToolArgs):
     plan_key: str = Field(pattern=r"^[HRSE]\d{4}_\d{3}_\d{1,3}$")
+
+
+class GetPlanBenefitsArgs(ToolArgs):
+    plan_key: str = Field(pattern=r"^[HRSE]\d{4}_\d{3}_\d{1,3}$")
+    category: Literal["dental"] = "dental"
 
 
 class UpdateCanvasArgs(ToolArgs):
@@ -148,7 +154,8 @@ def run_compare_full(ctx: ToolContext) -> tuple[list[PlanEstimate], Baseline, Co
         plans = repo.plans_in_county(c, ctx.plan_year, ssa)
         rx = repo.load_plan_rx(c, ctx.plan_year, plans, list(prof.drugs))
         med = repo.load_plan_medical(c, ctx.plan_year, plans)
-    ests, baseline = compare_with_baseline(plans, rx, med, prof, params)
+        dental = repo.load_plan_dental(c, ctx.plan_year, plans)
+    ests, baseline = compare_with_baseline(plans, rx, med, prof, params, dental)
     return ests, baseline, params
 
 
@@ -318,6 +325,33 @@ def _t_explain_plan(ctx: ToolContext, a: ExplainPlanArgs) -> dict[str, Any]:
     return {"plan": d, "benefits": ben, "src_ref": [*d["src_ref"], *[b["src_ref"] for b in ben]]}
 
 
+def plan_benefits(ctx: ToolContext, plan_key: str, category: str = "dental") -> dict[str, Any]:
+    """The `plan_dental` row with its src_ref (addendum A4.4). Raises ToolFailure for an unknown plan."""
+    with ctx.engine.connect() as c:
+        plans = repo.plans_by_key(c, ctx.plan_year, [plan_key])
+        if not plans:
+            raise ToolFailure("unknown_plan", "That plan isn't in the plan data.")
+        d = repo.plan_dental_one(c, ctx.plan_year, plan_key)
+    p = plans[0]
+    if d is not None:
+        dental = d.as_detail()
+    else:
+        dental = {**no_dental_row(NO_ROUTINE if p.category == "PDP" else NOT_LISTED), "services": []}
+    return {
+        "plan_key": plan_key,
+        "plan_name": p.plan_name,
+        "plan_year": ctx.plan_year,
+        "category": category,
+        "dental": dental,
+        "note": "Dental costs are not included in the yearly estimate. Confirm details with the plan.",
+        "src_ref": [r for r in (dental.get("src_ref"), p.src_ref) if r],
+    }
+
+
+def _t_get_plan_benefits(ctx: ToolContext, a: GetPlanBenefitsArgs) -> dict[str, Any]:
+    return plan_benefits(ctx, a.plan_key, a.category)
+
+
 def _t_update_canvas(ctx: ToolContext, a: UpdateCanvasArgs) -> dict[str, Any]:
     ctx.canvas["tab"] = a.tab
     if a.plan_keys:
@@ -365,6 +399,9 @@ TOOLS: dict[str, Tool] = {
              ComparePlansArgs, _t_compare_plans),
         Tool("explain_plan", "Details for one plan: costs, benefits, drug coverage.", ExplainPlanArgs,
              _t_explain_plan),
+        Tool("get_plan_benefits", "Dental benefits of one plan from the CMS plan benefit file: preventive and "
+             "comprehensive cost sharing, yearly maximum and limits. Not included in cost estimates.",
+             GetPlanBenefitsArgs, _t_get_plan_benefits),
         Tool("update_canvas", "Switch the comparison canvas tab or the selected plans.", UpdateCanvasArgs,
              _t_update_canvas),
         Tool("record_feedback", "Record a thumbs up/down the user gave a recommended plan.", RecordFeedbackArgs,

@@ -14,6 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from selector.benefits.dental import NO_ROUTINE_ORIGINAL, PlanDental, no_dental_row
 from selector.cost.engine import CostProfile, PlanEstimate, PlanInfo, compare
 from selector.cost.medical import PlanMedical
 from selector.cost.medigap import LABEL, MedigapResult, apply_medigap
@@ -163,6 +164,7 @@ class Baseline:
             "score": None,
             "rank": None,
             "delta_vs_baseline_cents": 0,
+            "dental": no_dental_row(NO_ROUTINE_ORIGINAL),
             "components": self.components(),
             "medigap": {
                 "plan": self.medigap.plan,
@@ -191,6 +193,8 @@ def must_have_notes(b: Baseline) -> list[str]:
         notes.append("Doesn't meet your must-have: no yearly out-of-pocket limit at or below yours.")
     if mh.max_monthly_premium_cents is not None and b.plan_premium_monthly_cents > mh.max_monthly_premium_cents:
         notes.append("Doesn't meet your must-have: the monthly premium is above your budget.")
+    if mh.dental or mh.dental_min_max_cents is not None:
+        notes.append("Doesn't meet your must-have: Original Medicare doesn't cover routine dental.")
     return notes
 
 
@@ -227,9 +231,10 @@ def compare_with_baseline(
     med: dict[str, PlanMedical],
     profile: CostProfile,
     params: CostParams,
+    dental: dict[str, PlanDental] | None = None,
 ) -> tuple[list[PlanEstimate], Baseline]:
     """`compare()` (unchanged ranking) plus the pinned baseline and each row's delta to it."""
-    ests = compare(plans, rx, med, profile, params)
+    ests = compare(plans, rx, med, profile, params, dental)
     b = build_baseline(ests, profile, params)
     set_deltas(ests, b)
     return ests, b

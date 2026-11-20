@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
+from selector.benefits.dental import NO_ROUTINE, NOT_LISTED, PlanDental, dental_drop_reason, no_dental_row
 from selector.cost.medical import MedicalResult, PlanMedical, ma_medical, original_medical
 from selector.cost.params import APPROXIMATION_NOTES, CostParams, Weights
 from selector.cost.part_d import DrugInput, PartDResult, PlanRx, simulate_part_d
@@ -55,6 +56,8 @@ class MustHaves:
     min_stars: float | None = None
     max_moop_cents: int | None = None
     max_monthly_premium_cents: int | None = None
+    dental: bool = False  # "Includes dental": at least preventive dental, without an extra premium
+    dental_min_max_cents: int | None = None  # "Dental maximum at least $X" (yearly equivalent)
 
 
 @dataclass(frozen=True)
@@ -87,6 +90,7 @@ class PlanEstimate:
     score: float | None = None
     rank: int | None = None
     delta_vs_baseline_cents: int | None = None
+    dental: PlanDental | None = None
 
     @property
     def total_est_cents(self) -> int:
@@ -96,6 +100,11 @@ class PlanEstimate:
     def must_have_fit(self) -> float:
         n = len(self.drugs.drugs)
         return 1.0 if n == 0 else self.drugs_covered / n
+
+    def dental_row(self) -> dict[str, Any]:
+        if self.dental is not None:
+            return self.dental.as_row()
+        return no_dental_row(NO_ROUTINE if self.plan.category == "PDP" else NOT_LISTED)
 
     def as_dict(self) -> dict[str, Any]:
         p = self.plan
@@ -131,6 +140,7 @@ class PlanEstimate:
             "score": None if self.score is None else round(self.score, 4),
             "rank": self.rank,
             "delta_vs_baseline_cents": self.delta_vs_baseline_cents,
+            "dental": self.dental_row(),
             "notes": self.notes,
             "src_ref": self.src_refs,
         }
@@ -142,6 +152,7 @@ def estimate_plan(
     med: PlanMedical | None,
     profile: CostProfile,
     params: CostParams,
+    dental: PlanDental | None = None,
 ) -> PlanEstimate:
     path = "original" if plan.category == "PDP" else "ma"
     drugs = simulate_part_d(list(profile.drugs), rx if plan.has_part_d else None, params.oop_threshold_cents)
@@ -163,7 +174,9 @@ def estimate_plan(
     if plan.star_overall is None and plan.star_note:
         notes.append(f"Star rating: {plan.star_note}.")
     covered = sum(1 for d in drugs.drugs if d.covered)
-    return PlanEstimate(plan, path, premium, part_b, drugs, medical, low, high, worst, covered, refs, notes)
+    est = PlanEstimate(plan, path, premium, part_b, drugs, medical, low, high, worst, covered, refs, notes)
+    est.dental = dental
+    return est
 
 
 def drop_reason(e: PlanEstimate, profile: CostProfile) -> str | None:
@@ -190,6 +203,8 @@ def drop_reason(e: PlanEstimate, profile: CostProfile) -> str | None:
         return "Maximum out-of-pocket is above your limit."
     if mh.max_monthly_premium_cents is not None and p.monthly_premium_cents > mh.max_monthly_premium_cents:
         return "Monthly premium is above your budget."
+    if reason := dental_drop_reason(e.dental, mh.dental, mh.dental_min_max_cents):
+        return reason
     if not e.drugs.estimable:
         return "CMS withheld this plan's drug data; drug costs can't be estimated (check Plan Finder)."
     return None
@@ -250,6 +265,11 @@ def compare(
     med: dict[str, PlanMedical],
     profile: CostProfile,
     params: CostParams,
+    dental: dict[str, PlanDental] | None = None,
 ) -> list[PlanEstimate]:
-    ests = [estimate_plan(p, rx.get(p.plan_key), med.get(p.plan_key), profile, params) for p in plans]
+    dental = dental or {}
+    ests = [
+        estimate_plan(p, rx.get(p.plan_key), med.get(p.plan_key), profile, params, dental.get(p.plan_key))
+        for p in plans
+    ]
     return rank(ests, profile)

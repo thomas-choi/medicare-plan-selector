@@ -79,6 +79,16 @@ def validate_year(conn: Connection, year: int, spec: dict[str, Any], oop_thresho
     if n:
         problems.append(f"{n} MA-PD/PDP plans without a formulary")
 
+    # Every Medicare Advantage plan (anything but a PDP) has a dental row, even if it has no dental benefit.
+    n = _scalar(
+        conn,
+        "SELECT COUNT(*) FROM plan p WHERE p.plan_year=:y AND p.category <> 'PDP' "
+        "AND NOT EXISTS (SELECT 1 FROM plan_dental d WHERE d.plan_year=p.plan_year AND d.plan_key=p.plan_key)",
+        **y,
+    )
+    if n:
+        problems.append(f"{n} Medicare Advantage plans without a plan_dental row (PBP b16)")
+
     # The Landscape OOP threshold must equal the cited Part D parameter.
     oop = int(spec["params"]["part_d"]["oop_threshold_cents"])
     if oop_thresholds and oop_thresholds != {oop}:
@@ -112,4 +122,20 @@ def validate_year(conn: Connection, year: int, spec: dict[str, Any], oop_thresho
             s=g["county_ssa"],
         ):
             problems.append(f"golden {g['plan_key']}: not offered in county {g['county_ssa']}")
+        if "dental" in g:
+            drow = (
+                conn.execute(
+                    text("SELECT * FROM plan_dental WHERE plan_year=:y AND plan_key=:k"),
+                    {"y": year, "k": g["plan_key"]},
+                )
+                .mappings()
+                .first()
+            )
+            if drow is None:
+                problems.append(f"golden {g['plan_key']}: no dental row")
+            else:
+                for col, want in g["dental"].items():
+                    got = drow[col]
+                    if (bool(got) if isinstance(want, bool) else got) != want:
+                        problems.append(f"golden {g['plan_key']}.dental.{col}: {got} != {want}")
     return problems

@@ -104,6 +104,25 @@
               "title": "All Drugs Covered",
               "type": "boolean"
             },
+            "dental": {
+              "default": false,
+              "title": "Dental",
+              "type": "boolean"
+            },
+            "dental_min_max_cents": {
+              "anyOf": [
+                {
+                  "maximum": 10000000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Dental Min Max Cents"
+            },
             "max_monthly_premium_cents": {
               "anyOf": [
                 {
@@ -272,6 +291,29 @@
           "default": null
         }
       },
+      "type": "object"
+    }
+  },
+  "get_plan_benefits": {
+    "description": "Dental benefits of one plan from the CMS plan benefit file: preventive and comprehensive cost sharing, yearly maximum and limits. Not included in cost estimates.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "const": "dental",
+          "default": "dental",
+          "title": "Category",
+          "type": "string"
+        },
+        "plan_key": {
+          "pattern": "^[HRSE]\\d{4}_\\d{3}_\\d{1,3}$",
+          "title": "Plan Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan_key"
+      ],
       "type": "object"
     }
   },

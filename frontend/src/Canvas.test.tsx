@@ -95,3 +95,65 @@ describe("standard Original Medicare + Part D baseline (B8)", () => {
     expect(md).toContain("- Part B (medical): $209.40/month");
   });
 });
+
+describe("dental (WP12)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const golden = {
+    summary: "Preventive $0 · Comprehensive 0–50% · Max $500/yr (shared)",
+    has_preventive: true,
+    has_comprehensive: true,
+    max_cents: 50000,
+    max_period: "year",
+    max_shared: true,
+    optional_supplemental: false,
+  };
+
+  it("shows the dental summary per row; the standard row and PDPs have no routine dental", async () => {
+    const { BASELINE, ROWS_VS_BASELINE } = await import("./testdata");
+    const rows = [{ ...ROWS_VS_BASELINE[0], dental: golden }, ROWS_VS_BASELINE[1]];
+    const base = {
+      ...BASELINE,
+      dental: {
+        ...golden,
+        summary: "No routine dental (Original Medicare and Medigap don't cover it)",
+        has_preventive: false,
+        has_comprehensive: false,
+      },
+    };
+    render(<PlanTable rows={rows} baseline={base} selected={[]} onSelect={() => {}} />);
+    const r = screen.getAllByRole("row");
+    expect(within(r[1]).getByText(/^No routine dental/)).toBeInTheDocument();
+    expect(within(r[2]).getByText(golden.summary)).toBeInTheDocument();
+    expect(within(r[3]).getByText("No dental benefit listed")).toBeInTheDocument();
+  });
+
+  it("side-by-side loads per-service dental costs from the benefits endpoint", async () => {
+    const { ROWS_VS_BASELINE, mockFetch } = await import("./testdata");
+    const calls = mockFetch({
+      "GET /api/plans/H0028_028_0/benefits": {
+        plan_key: "H0028_028_0",
+        note: "",
+        dental: {
+          ...golden,
+          services: [
+            { code: "pc", label: "Cleanings", group: "preventive", cost: "$0", limit_text: "2 per year" },
+            {
+              code: "prm",
+              label: "Dentures (removable prosthodontics)",
+              group: "comprehensive",
+              cost: "50%",
+              limit_text: null,
+            },
+          ],
+        },
+      },
+    });
+    const rows = [{ ...ROWS_VS_BASELINE[0], dental: golden }, ROWS_VS_BASELINE[1]];
+    render(<SideBySide rows={rows} fallback={rows} />);
+    expect(screen.getByText(golden.summary)).toBeInTheDocument();
+    expect(await screen.findByText("Dentures (removable prosthodontics): 50%")).toBeInTheDocument();
+    expect(screen.getByText("Cleanings: $0")).toBeInTheDocument();
+    expect(screen.getByText("2 per year")).toBeInTheDocument();
+    expect(calls.map((c) => c.key)).toEqual(["GET /api/plans/H0028_028_0/benefits"]); // no call for plan B
+  });
+});

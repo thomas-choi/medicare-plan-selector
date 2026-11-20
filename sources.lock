@@ -21,7 +21,8 @@
         "pbp_b7_health_prof.txt": "206bf1d86ec2a112fc47e77a583aa1ea4fccd777ae087c44a70ad59db4cdca5b",
         "pbp_b4_emerg_urgent.txt": "1fd090b83504b58c095486a41bfb6827a975e513049255549498407eb937d320",
         "pbp_b9_outpat_hosp.txt": "77ad72723d6b2fb3f2c68227a35627f23e91054f77cec086be7c3cf91b3800d8",
-        "pbp_b1a_inpat_hosp.txt": "38773259499987d03e2745406180fe471094c3db36a46e9f2ce07c34c3f22fa6"
+        "pbp_b1a_inpat_hosp.txt": "38773259499987d03e2745406180fe471094c3db36a46e9f2ce07c34c3f22fa6",
+        "pbp_b16_dental.txt": "ac810244250d9e30feb112c1f1fa40bc8ef067a94be045d3f0b415d6d579b8d6"
       }
     },
     "S3": {

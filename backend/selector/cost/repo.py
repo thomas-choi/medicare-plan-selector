@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import Connection, and_, or_, select
 
 from selector import models as m
+from selector.benefits.dental import PlanDental
 from selector.config import Settings
 from selector.cost.engine import PlanInfo
 from selector.cost.medical import Benefit, InpatientInterval, PlanMedical
@@ -236,3 +237,18 @@ def load_plan_medical(conn: Connection, year: int, plans: list[PlanInfo]) -> dic
 def drug_on_any_formulary(conn: Connection, year: int, rxcui: str) -> bool:
     f = m.formulary
     return conn.execute(select(f.c.ndc).where(f.c.plan_year == year, f.c.rxcui == rxcui).limit(1)).first() is not None
+
+
+def load_plan_dental(conn: Connection, year: int, plans: list[PlanInfo]) -> dict[str, PlanDental]:
+    keys = [p.plan_key for p in plans if p.category != "PDP"]
+    if not keys:
+        return {}
+    d = m.plan_dental
+    rows = conn.execute(select(d).where(d.c.plan_year == year, d.c.plan_key.in_(keys))).mappings()
+    return {r["plan_key"]: PlanDental.from_row(r) for r in rows}
+
+
+def plan_dental_one(conn: Connection, year: int, plan_key: str) -> PlanDental | None:
+    d = m.plan_dental
+    r = conn.execute(select(d).where(d.c.plan_year == year, d.c.plan_key == plan_key)).mappings().first()
+    return PlanDental.from_row(r) if r is not None else None

@@ -22,6 +22,7 @@ sources:
       b4: pbp_b4_emerg_urgent.txt
       b9: pbp_b9_outpat_hosp.txt
       b1a: pbp_b1a_inpat_hosp.txt
+      b16: pbp_b16_dental.txt     # dental (design v0.4 addendum A4)
 
   S3:
     title: CMS monthly Part D formulary files CY2027
@@ -95,6 +96,13 @@ golden:
     part_d_deductible_cents: 32500
     moop_in_network_cents: 655000
     star_overall: "4.5"
+    # PBP b16 (verified 2026-11-19): $500/year preventive maximum, comprehensive shares it.
+    dental:
+      has_preventive: true
+      has_comprehensive: true
+      preventive_max_cents: 50000
+      preventive_max_period: "year"
+      comprehensive_max_shared: true
 
 # States whose SSA→FIPS mapping is pending (approved 2026-11-12; fix before public launch).
 pending_fips_states: [Alaska, Connecticut]

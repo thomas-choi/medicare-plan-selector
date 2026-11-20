@@ -11,6 +11,7 @@ from collections.abc import Iterator
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import Path as Path_
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -273,6 +274,24 @@ def providers(
         "candidates": [c.__dict__ for c in cands],
         "note": "CMS public files don't include provider networks. Call each plan to confirm.",
     }
+
+
+# ------------------------------------------------------------------ plan benefits (addendum A4)
+
+
+@router.get("/plans/{plan_key}/benefits")
+def plan_benefits(
+    plan_key: str = Path_(pattern=r"^[HRSE]\d{4}_\d{3}_\d{1,3}$"),
+    category: Literal["dental"] = "dental",
+    sess: Session = Depends(current),
+) -> dict[str, Any]:
+    """Dental benefits of one plan from CMS PBP b16 (public plan data; nothing about the user is read)."""
+    ctx = T.ToolContext(sess.state.engine, sess.state.settings, Profile())
+    try:
+        out = T.plan_benefits(ctx, plan_key, category)
+    except T.ToolFailure as e:
+        raise HTTPException(404, {"code": "unknown_plan", "message": e.user_message}) from e
+    return out
 
 
 # ------------------------------------------------------------------ chat (SSE)

@@ -21,6 +21,8 @@ DESIGN_TOOLS = {
     "explain_plan",
     "update_canvas",
     "record_feedback",
+    # v0.4 addendum A6
+    "get_plan_benefits",
 }
 
 

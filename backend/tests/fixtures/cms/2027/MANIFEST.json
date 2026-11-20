@@ -66,6 +66,9 @@
     },
     "census_county.txt": {
       "rows": 29
+    },
+    "b16.txt": {
+      "rows": 10
     }
   },
   "plans": [

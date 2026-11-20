@@ -107,7 +107,7 @@ export interface Dental {
   services?: {
     code: string;
     label: string;
-    group: "preventive" | "comprehensive";
+    group: "preventive" | "comprehensive" | "medicare_covered";
     cost: string;
     limit_text: string | null;
   }[];
@@ -276,6 +276,11 @@ export const api = {
       data_vintage: string;
       recommendation_ids: string[];
     }>("POST", "/api/compare", profile ? { profile } : {}),
+  dental: (planKey: string) =>
+    call<{ plan_key: string; dental: Dental; note: string }>(
+      "GET",
+      `/api/plans/${encodeURIComponent(planKey)}/benefits?category=dental`,
+    ),
   feedback: (body: Record<string, unknown>) =>
     call<{ stored: string; linked: boolean }>("POST", "/api/feedback", body),
 };

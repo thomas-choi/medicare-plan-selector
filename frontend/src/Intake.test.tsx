@@ -162,3 +162,16 @@ describe("intake: Medigap assumption for the standard option (WP11)", () => {
     expect(screen.queryByLabelText("Medigap monthly premium quote")).not.toBeInTheDocument();
   });
 });
+
+describe("intake: dental must-haves (WP12)", () => {
+  it("sends dental and the minimum yearly maximum in cents", () => {
+    const onSubmit = setup();
+    fireEvent.click(screen.getByLabelText(/Only plans that include dental/));
+    fireEvent.change(screen.getByLabelText("Minimum dental yearly maximum"), { target: { value: "1000" } });
+    fireEvent.click(screen.getByRole("button", { name: "Compare plans" }));
+    expect(onSubmit.mock.calls[0][0].must_haves).toMatchObject({
+      dental: true,
+      dental_min_max_cents: 100000,
+    });
+  });
+});

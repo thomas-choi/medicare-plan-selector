@@ -423,6 +423,36 @@ export function Intake({ profile, maxDrugs, maxProviders, busy, onSubmit }: Prop
         />{" "}
         Only plans that cover all my drugs
       </label>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={!!p.must_haves.dental}
+          onChange={(e) => set({ must_haves: { ...p.must_haves, dental: e.target.checked } })}
+        />{" "}
+        Only plans that include dental (at least cleanings and exams)
+      </label>
+      <label>
+        Dental yearly maximum at least, $ (optional)
+        <input
+          aria-label="Minimum dental yearly maximum"
+          inputMode="numeric"
+          placeholder="e.g. 1000"
+          value={
+            p.must_haves.dental_min_max_cents != null
+              ? (p.must_haves.dental_min_max_cents / 100).toString()
+              : ""
+          }
+          onChange={(e) => {
+            const v = parseFloat(e.target.value);
+            set({
+              must_haves: {
+                ...p.must_haves,
+                dental_min_max_cents: Number.isFinite(v) && v >= 0 ? Math.round(v * 100) : null,
+              },
+            });
+          }}
+        />
+      </label>
       {err && (
         <p role="alert" className="error">
           {err}

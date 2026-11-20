@@ -21,6 +21,10 @@ PLANS = {
 MAX_ROWS = 200
 AZ = "Arizona"
 EXTRA_SSA = {"02013", "05201", "05200"}  # Alaska (pending FIPS), LA partial + main code
+# Extra PBP b16 dental rows (not in the Landscape sample, so the ingest filters them out) that exercise the dental
+# parser: own comprehensive maximum, optional-only dental, no dental, preventive + optional package, 6-month maximum.
+DENTAL_EXTRA = {"H0062_011_0", "H0609_054_0", "H0016_001_0", "H0028_017_0"}
+DENTAL_6M_MAX = True  # also keep the first plan whose preventive maximum renews every six months
 DRUG_RXCUIS = {"861007", "617314", "1373463", "285018", "311040", "197361"}  # chosen below if present
 
 
@@ -120,6 +124,11 @@ def main(raw: Path, out: Path) -> None:
         if name == "plan_area.txt":
             keep = [r for r in keep if r[10] in az_ssa]
         write(out, name, h, keep, "\t", manifest)
+    rows = list(csv.reader(io.StringIO(pz.read("pbp_b16_dental.txt").decode("cp1252")), delimiter="\t"))
+    h, ix16 = rows[0], {c: i for i, c in enumerate(rows[0])}
+    six = next(r for r in rows[1:] if r[ix16["pbp_b16b_maxplan_pv_per"]] == "4") if DENTAL_6M_MAX else None
+    keep = [r for r in rows[1:] if key(r[0], r[1], r[2]) in PLANS | DENTAL_EXTRA or r is six]
+    write(out, "b16.txt", h, keep, "\t", manifest)
 
     # Crosswalk + Census samples
     xz = zipfile.ZipFile(next((raw / "XW1").glob("*.zip")))

@@ -19,7 +19,7 @@ from selector import models as m
 from selector.ingest.fetch import Fetched
 from selector.ingest.manifest import sha256_bytes
 from selector.ingest.normalize import src_ref
-from selector.ingest.parsers import county_xwalk, decode, landscape, pbp, read_delimited, spuf
+from selector.ingest.parsers import county_xwalk, decode, landscape, pbp, pbp_dental, read_delimited, spuf
 
 BATCH = 5000
 YEAR_TABLES: Sequence[Table] = (
@@ -33,6 +33,7 @@ YEAR_TABLES: Sequence[Table] = (
     m.insulin_cost,
     m.part_d_params,
     m.medicare_params,
+    m.plan_dental,
 )
 
 
@@ -50,6 +51,7 @@ class YearData:
     insulin: list[dict[str, Any]] = field(default_factory=list)
     part_d_params: dict[str, Any] = field(default_factory=dict)
     medicare_params: dict[str, Any] = field(default_factory=dict)
+    dental: list[dict[str, Any]] = field(default_factory=list)
     oop_thresholds: set[int] = field(default_factory=set)
 
     def rows_for(self, table: Table) -> list[dict[str, Any]]:
@@ -64,6 +66,7 @@ class YearData:
             "insulin_cost": self.insulin,
             "part_d_params": [self.part_d_params] if self.part_d_params else [],
             "medicare_params": [self.medicare_params] if self.medicare_params else [],
+            "plan_dental": self.dental,
         }[table.name]
 
 
@@ -135,6 +138,10 @@ def build_year(year: int, fetched: dict[str, Fetched], spec: dict[str, Any], ove
         if r["plan_key"] not in plan_keys:
             continue
         (d.inpatient if kind == "interval" else d.pbp_benefit).append({"plan_year": year, **r})
+    # Dental (S2 b16, addendum A4).
+    for r in pbp_dental.parse_dental(_read(s2.paths["b16"]), s2.entry.vintage):
+        if r["plan_key"] in plan_keys:
+            d.dental.append({"plan_year": year, **r})
 
     # Part D (S3).
     pf: dict[str, str] = {}

@@ -239,6 +239,28 @@ part_d_params = Table(
     Column("src_ref", JSON, nullable=False),
 )
 
+# Dental benefits per plan (PBP b16, addendum A4). Numbers shown to users come only from here (CMS), never from
+# carrier documents. `services_json`: [{code, label, group, mandatory, optional, copay_min_cents, copay_max_cents,
+# coins_min_pct, coins_max_pct, cost, limit_text}]; limit_text is CMS free text, display only.
+DENTAL_PERIODS = ("year", "2y", "3y", "6m", "3m", "month", "other")
+plan_dental = Table(
+    "plan_dental",
+    metadata,
+    _plan_year(),
+    Column("plan_key", String(16), primary_key=True),
+    Column("has_medicare_covered", Boolean, nullable=False),
+    Column("has_preventive", Boolean, nullable=False),
+    Column("has_comprehensive", Boolean, nullable=False),
+    Column("preventive_max_cents", Cents),
+    Column("preventive_max_period", Enum(*DENTAL_PERIODS, name="dental_period")),
+    Column("comprehensive_max_cents", Cents),
+    Column("comprehensive_max_period", Enum(*DENTAL_PERIODS, name="dental_period")),
+    Column("comprehensive_max_shared", Boolean),
+    Column("optional_supplemental", Boolean, nullable=False),
+    Column("services_json", JSON, nullable=False),
+    Column("src_ref", JSON, nullable=False),
+)
+
 # Original Medicare / Medigap amounts per plan year (addendum A5.2), from cited values in sources/<year>.yaml.
 medicare_params = Table(
     "medicare_params",
@@ -272,6 +294,7 @@ PLAN_TABLES = (
     "drug_price_proxy",
     "part_d_params",
     "medicare_params",
+    "plan_dental",
 )
 
 # ---------------------------------------------------------------- user and session data (saved mode only)

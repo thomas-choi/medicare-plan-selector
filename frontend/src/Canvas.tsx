@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import type { Canvas as CanvasT, PlanRow } from "./api";
+import { useEffect, useMemo, useState } from "react";
+import { api, type Canvas as CanvasT, type Dental, type PlanRow } from "./api";
 import { delta, money, range, stars, worstCase } from "./format";
 import { RatingWidget } from "./Feedback";
 
@@ -162,6 +162,7 @@ export function PlanTable({
             {th("worst_case_cents", "Worst case")}
             {th("star_overall", "Stars")}
             <th>Drugs covered</th>
+            <th>Dental</th>
             <th>vs. standard</th>
           </tr>
         </thead>
@@ -189,6 +190,7 @@ export function PlanTable({
               <td>
                 {baseline.drugs_covered}/{baseline.drugs_total}
               </td>
+              <td className="dental">{baseline.dental?.summary ?? "No routine dental"}</td>
               <td>—</td>
             </tr>
           )}
@@ -217,6 +219,7 @@ export function PlanTable({
               <td>
                 {r.drugs_covered}/{r.drugs_total}
               </td>
+              <td className="dental">{r.dental?.summary ?? "No dental benefit listed"}</td>
               <td>{baseline ? delta(r.delta_vs_baseline_cents) : "—"}</td>
             </tr>
           ))}
@@ -320,6 +323,7 @@ export function SideBySide({
     ["vs. standard / year", (r) => (r.is_baseline ? "—" : delta(r.delta_vs_baseline_cents))],
     ["Worst case / year", (r) => worstCase(r)],
     ["Drugs covered", (r) => `${r.drugs_covered} of ${r.drugs_total}`],
+    ["Dental (not in the estimate)", (r) => r.dental?.summary ?? "No dental benefit listed"],
   ];
   return (
     <div className="table-wrap">
@@ -358,6 +362,7 @@ export function SideBySide({
               </td>
             ))}
           </tr>
+          <DentalDetails show={show} />
           {baseline && (
             <tr>
               <th scope="row">Notes</th>
@@ -378,5 +383,54 @@ export function SideBySide({
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** Per-service dental cost sharing for the side-by-side columns, loaded from GET /api/plans/{key}/benefits
+ * (CMS PBP b16). Plans without routine dental need no request. */
+export function DentalDetails({ show }: { show: PlanRow[] }) {
+  const want = show
+    .filter((r) => !r.is_baseline && (r.dental?.has_preventive || r.dental?.has_comprehensive))
+    .map((r) => r.plan_key);
+  const keyList = want.join(",");
+  const [details, setDetails] = useState<Record<string, Dental | "error">>({});
+  useEffect(() => {
+    let live = true;
+    for (const k of keyList ? keyList.split(",") : []) {
+      api
+        .dental(k)
+        .then((d) => live && setDetails((old) => ({ ...old, [k]: d.dental })))
+        .catch(() => live && setDetails((old) => ({ ...old, [k]: "error" })));
+    }
+    return () => {
+      live = false;
+    };
+  }, [keyList]);
+  if (!want.length) return null;
+  return (
+    <tr>
+      <th scope="row">Dental services</th>
+      {show.map((r) => {
+        const d = details[r.plan_key];
+        if (!want.includes(r.plan_key)) return <td key={r.plan_key}>—</td>;
+        if (d === undefined) return <td key={r.plan_key}>Loading…</td>;
+        if (d === "error") return <td key={r.plan_key}>Couldn’t load dental details.</td>;
+        return (
+          <td key={r.plan_key}>
+            <ul className="dental-services" aria-label={`Dental services for ${r.plan_name}`}>
+              {(d.services ?? [])
+                .filter((s) => s.group !== "medicare_covered")
+                .map((s) => (
+                  <li key={s.code}>
+                    {s.label}: {s.cost}
+                    {s.limit_text && <div className="sub">{s.limit_text}</div>}
+                  </li>
+                ))}
+            </ul>
+            <div className="sub">Source: CMS plan benefit file (PBP section 16).</div>
+          </td>
+        );
+      })}
+    </tr>
   );
 }

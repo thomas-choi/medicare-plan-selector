@@ -50,6 +50,8 @@ class MustHavesIn(_Strict):
     min_stars: float | None = Field(default=None, ge=1, le=5)
     max_moop_cents: int | None = Field(default=None, ge=0, le=100_000_000)
     max_monthly_premium_cents: int | None = Field(default=None, ge=0, le=10_000_000)
+    dental: bool = False
+    dental_min_max_cents: int | None = Field(default=None, ge=0, le=10_000_000)
 
 
 class WeightsIn(_Strict):
@@ -103,6 +105,8 @@ class Profile(_Strict):
                 min_stars=mh.min_stars,
                 max_moop_cents=mh.max_moop_cents,
                 max_monthly_premium_cents=mh.max_monthly_premium_cents,
+                dental=mh.dental,
+                dental_min_max_cents=mh.dental_min_max_cents,
             ),
             snp_eligible=self.snp_eligible,
             weights=Weights(w.total_cost, w.worst_case, w.stars, w.must_have_fit),
