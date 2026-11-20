@@ -10,4 +10,5 @@ Thomas tested `feat/mvp-wp2-8` on ml3090 on 2026-11-19 and sent four comments. D
 | Baseline (A5) | Pinned, unranked "Original Medicare + Part D (standard)" row on every path: Parts A/B (2027 amounts, now **V**) + lowest-cost PDP for the user's drugs + optional Medigap G / N / HDG with a user-entered premium. |
 | Parameters | 2027 Part B $209.40/mo and $292 deductible, Part A $1,776, Medigap HD $3,050 (all **V**); new `medicare_params` table replaces the 2026 placeholders. |
 | API (A6) | `GET /api/drugs` adds `matched_as`, `how`; new `POST /api/providers/network`, `GET /api/plans/{plan_key}/benefits`; `POST /api/compare` adds `baseline`, `dental`, `doctors`, `documents`, `delta_vs_baseline_cents`; new tools `check_provider_network`, `get_plan_benefits`. |
-| Plan | WP9 (done locally) – WP14, tests D, P, B, DN, CD in `IMPLEMENTATION-PLAN.md`. Open decisions Q12–Q21 in `OPEN-QUESTIONS.md`. |
+| Plan | WP9 (done locally) – WP15, tests D, P, B, DN, CD, R in `IMPLEMENTATION-PLAN.md`. Open decisions Q12–Q21 in `OPEN-QUESTIONS.md`. |
+| Test/dev Redis (A10, 2026-11-20) | Redis is app-local. Tests and make targets take Redis settings independently of MySQL (`MSP_TEST_REDIS_URL`, else host/port/password with host default `127.0.0.1`). Supported mode: shared MySQL + local Redis. Coding is WP15; this commit is documentation only. |

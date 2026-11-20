@@ -151,7 +151,8 @@ Each package is PR-sized, with tests first. A `docs/CHANGELOG.md` entry is requi
 Status: **draft for Thomas's sign-off**, except WP9, which is implemented on local branch `fix/drug-search`
 (`19111e0`, not pushed). Same rules as above: cumulative tests, the worker never pushes, merges, tags or deploys.
 
-Suggested order before Thomas enrolls (Nov 24): **WP9 → WP10 → WP11 → WP12**, then WP13; WP14 after enrollment.
+Suggested order before Thomas enrolls (Nov 24): **WP9 → WP15 → WP10 → WP11 → WP12**, then WP13; WP14 after enrollment.
+WP15 is independent of WP10–WP14 and unblocks QA against a shared MySQL.
 
 | WP | Scope | Size | Depends on |
 |---|---|---|---|
@@ -161,6 +162,7 @@ Suggested order before Thomas enrolls (Nov 24): **WP9 → WP10 → WP11 → WP12
 | **WP12** | Dental: parser `ingest/parsers/pbp_dental.py` for `pbp_b16_dental.txt`, `plan_dental` table (Alembic `0004`), fixture sample, validation (golden H0028_028_0 = $500/yr shared); `GET /api/plans/{plan_key}/benefits`; tool `get_plan_benefits`; Dental column, side-by-side section, must-haves; optional dental-use preset behind a flag | M | – |
 | **WP13** | Doctors: intake NPI pick via `GET /api/providers` with `must_keep`; `network.py` `DirectoryChecker` (Plan-Net FHIR), `sources/directories.yaml` seed (UHC, Humana first), `selector directories sync`, `insurance_plan_map`; CMS opt-out check for the baseline; `POST /api/providers/network`; tool `check_provider_network`; policy/validator change (listing status only); badges + optional filter/weight | L | WP11 (baseline badge) |
 | **WP14** (optional) | Carrier documents: `selector docs fetch` (robots check, 1 req/5 s/host, PDF only, ≤15 MB, sha256, H-number check), `plan_document` table, links in side-by-side; no value extraction | M | – |
+| **WP15** | Test/dev Redis is app-local (addendum A10). Decouple Redis from the MySQL host in `backend/tests/conftest.py`, `scripts/devdb.sh` and the Makefile; document `.env.example` and `README.md`. `docker-compose.yml` / `docker-compose.prod.yml`: comments only (no functional change required). Readiness (`/api/ready`) is unchanged. Owner: Claude coding worker on ml3090; review: Philip. No push, merge or deploy without Thomas's approval | S | – |
 
 ### v0.4 tests (added to the cumulative suite)
 
@@ -191,3 +193,9 @@ Suggested order before Thomas enrolls (Nov 24): **WP9 → WP10 → WP11 → WP12
 | CD2 | WP14 | Rate limit: ≥5 s between requests to one host (fake clock) |
 | CD3 | WP14 | Non-PDF or >15 MB → rejected; PDF without the plan's H-number → `verified=false`, not shown |
 | CD4 | WP14 | Forbidden-files hook blocks any fetched PDF from being committed |
+| R1 | WP15 | `conftest.py`: `MSP_TEST_REDIS_URL` wins; with only `MSP_TEST_MYSQL_HOST` set, `REDIS_URL` uses host `127.0.0.1` (not the MySQL host) and `MSP_TEST_REDIS_PASSWORD` when set |
+| R2 | WP15 | `devdb.sh`: remote MySQL + unset or local `REDIS_URL` → Redis is local, `COMPOSE_REDIS_URL` is not forced to the MySQL host, `DEV_DB_REMOTE=1` |
+| R3 | WP15 | `devdb.sh`: explicit remote `REDIS_URL` still means remote Redis (existing `test_devdb_remote_stack_from_env_urls` still passes) |
+| R4 | WP15 | `make test` with no `MSP_TEST_*` still uses `local-stack-up` and the local ports; `test_app_up_never_recreates_the_tmpfs_stack` still holds (`--no-recreate`, `test-backend` depends on `local-stack-up`) |
+| R5 | WP15 | Existing readiness tests unchanged (`/api/ready` still requires Redis and plan data) |
+| R6 | WP15 | Full backend suite green with `MSP_TEST_MYSQL_HOST=192.168.0.216` (and `MSP_MYSQL_PORT=3306` if that server listens on 3306) plus local Redis |

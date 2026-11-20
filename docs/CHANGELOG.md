@@ -219,3 +219,10 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
 - Docs: `docs/design/DESIGN-v0.4-ADDENDUM.md` (doctors, dental, Original Medicare + Part D baseline),
   `CHANGES-FROM-v0.3.md`, WP10–WP14 in `IMPLEMENTATION-PLAN.md`, Q12–Q21 in `OPEN-QUESTIONS.md`.
 
+## Design — Redis is app-local (2026-11-20, local branch `fix/drug-search`)
+- Hermes QA against shared MySQL at 192.168.0.216:3306: 340 passed, 39 failed, 8 errors, all Redis connection
+  failures. Root cause: `backend/tests/conftest.py` built `REDIS_URL` from `MSP_TEST_MYSQL_HOST` and a hard-coded
+  dev password; `MSP_TEST_REDIS_PASSWORD` was ignored. `scripts/devdb.sh` also fell back Redis to the MySQL host.
+- Thomas: Redis stays with the app/local stack; the shared server is MySQL only. Readiness is unchanged.
+- Docs only (no code, Makefile, compose or test changes in this commit): addendum A10, DESIGN.md §10,
+  WP15 in `IMPLEMENTATION-PLAN.md` (owner: Claude worker on ml3090, review: Philip).
