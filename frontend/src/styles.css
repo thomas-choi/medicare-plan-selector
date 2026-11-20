@@ -297,6 +297,22 @@ th button {
   padding: 0;
   min-height: 0;
 }
+tr.baseline td,
+th.baseline {
+  background: #eef4fb;
+}
+tr.baseline td:first-child {
+  border-left: 4px solid var(--accent);
+}
+.badge {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
 tr.dropped {
   color: #777;
   background: #f4f4f4;

@@ -358,6 +358,63 @@ export function Intake({ profile, maxDrugs, maxProviders, busy, onSubmit }: Prop
           </select>
         </label>
       </div>
+      <h3>Standard option: Original Medicare + Part D</h3>
+      <p className="hint">
+        Every comparison includes Original Medicare (Parts A and B) with the lowest-cost drug plan for your
+        drugs. You can add a Medigap policy to it as an assumption.
+      </p>
+      <div className="grid2">
+        <label>
+          Medigap policy
+          <select
+            aria-label="Medigap policy"
+            value={p.medigap?.plan ?? ""}
+            onChange={(e) =>
+              set({
+                medigap: {
+                  plan: (e.target.value || null) as "G" | "N" | "HDG" | null,
+                  monthly_premium_cents: e.target.value ? (p.medigap?.monthly_premium_cents ?? null) : null,
+                },
+              })
+            }
+          >
+            <option value="">None</option>
+            <option value="G">Plan G</option>
+            <option value="N">Plan N</option>
+            <option value="HDG">High-deductible Plan G</option>
+          </select>
+        </label>
+        {p.medigap?.plan && (
+          <label>
+            Your Medigap quote, $ per month (optional)
+            <input
+              aria-label="Medigap monthly premium quote"
+              inputMode="decimal"
+              placeholder="e.g. 145"
+              value={
+                p.medigap.monthly_premium_cents != null
+                  ? (p.medigap.monthly_premium_cents / 100).toString()
+                  : ""
+              }
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                set({
+                  medigap: {
+                    plan: p.medigap?.plan ?? null,
+                    monthly_premium_cents: Number.isFinite(v) && v >= 0 ? Math.round(v * 100) : null,
+                  },
+                });
+              }}
+            />
+          </label>
+        )}
+      </div>
+      {p.medigap?.plan && p.medigap.monthly_premium_cents == null && (
+        <p className="hint">
+          CMS doesn’t publish Medigap prices, so the premium isn’t included until you enter a quote (your SHIP
+          can help you get one).
+        </p>
+      )}
       <label className="check">
         <input
           type="checkbox"

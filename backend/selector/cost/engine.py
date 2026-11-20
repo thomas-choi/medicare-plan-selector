@@ -65,6 +65,8 @@ class CostProfile:
     must_haves: MustHaves = field(default_factory=MustHaves)
     snp_eligible: bool = False
     weights: Weights = field(default_factory=Weights)
+    medigap_plan: str | None = None  # G | N | HDG: an assumption for the baseline row only (addendum A5)
+    medigap_premium_monthly_cents: int | None = None  # the user's own quote; CMS publishes no Medigap premiums
 
 
 @dataclass
@@ -84,6 +86,7 @@ class PlanEstimate:
     dropped_reason: str | None = None
     score: float | None = None
     rank: int | None = None
+    delta_vs_baseline_cents: int | None = None
 
     @property
     def total_est_cents(self) -> int:
@@ -127,6 +130,7 @@ class PlanEstimate:
             "dropped_reason": self.dropped_reason,
             "score": None if self.score is None else round(self.score, 4),
             "rank": self.rank,
+            "delta_vs_baseline_cents": self.delta_vs_baseline_cents,
             "notes": self.notes,
             "src_ref": self.src_refs,
         }

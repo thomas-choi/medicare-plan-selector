@@ -22,11 +22,13 @@ from selector import models as m
 from selector.agent.providers.base import ToolCall, ToolSpec
 from selector.config import Settings
 from selector.cost import repo
-from selector.cost.engine import PlanEstimate, approximation_notes, compare
+from selector.cost.baseline import Baseline, compare_with_baseline
+from selector.cost.engine import PlanEstimate, approximation_notes
+from selector.cost.params import CostParams
 from selector.geo.hud import HudClient
 from selector.geo.resolve import resolve_zip
 from selector.lookups import LookupError_, NppesClient, RxNavClient
-from selector.profile import MustHavesIn, Profile, WeightsIn
+from selector.profile import MedigapIn, MustHavesIn, Profile, WeightsIn
 
 MAX_COMPARE = 5
 CHECKLIST = [
@@ -65,6 +67,7 @@ class FilterPlansArgs(ToolArgs):
     must_haves: MustHavesIn | None = None
     weights: WeightsIn | None = None
     utilization: Literal["low", "medium", "high"] | None = None
+    medigap: MedigapIn | None = Field(default=None, description="Medigap assumption for the baseline row only")
 
 
 class EstimateCostsArgs(ToolArgs):
@@ -136,7 +139,8 @@ def _need_county(ctx: ToolContext) -> str:
     return ctx.profile.county_ssa
 
 
-def run_compare(ctx: ToolContext) -> list[PlanEstimate]:
+def run_compare_full(ctx: ToolContext) -> tuple[list[PlanEstimate], Baseline, CostParams]:
+    """Rank every plan in the county and build the pinned Original Medicare + Part D baseline (addendum A5)."""
     ssa = _need_county(ctx)
     prof = ctx.profile.to_cost_profile()
     with ctx.engine.connect() as c:
@@ -144,13 +148,19 @@ def run_compare(ctx: ToolContext) -> list[PlanEstimate]:
         plans = repo.plans_in_county(c, ctx.plan_year, ssa)
         rx = repo.load_plan_rx(c, ctx.plan_year, plans, list(prof.drugs))
         med = repo.load_plan_medical(c, ctx.plan_year, plans)
-    return compare(plans, rx, med, prof, params)
+    ests, baseline = compare_with_baseline(plans, rx, med, prof, params)
+    return ests, baseline, params
+
+
+def run_compare(ctx: ToolContext) -> list[PlanEstimate]:
+    return run_compare_full(ctx)[0]
 
 
 def _short(e: dict[str, Any]) -> dict[str, Any]:
     keep = ("plan_key", "plan_name", "organization", "plan_type", "category", "rank", "star_overall",
             "monthly_premium_cents", "total_est_cents", "total_low_cents", "total_high_cents", "worst_case_cents",
-            "drug_low_cents", "drug_high_cents", "drugs_covered", "drugs_total", "dropped_reason")  # fmt: skip
+            "drug_low_cents", "drug_high_cents", "drugs_covered", "drugs_total", "dropped_reason",
+            "delta_vs_baseline_cents")  # fmt: skip
     return {k: e[k] for k in keep}
 
 
@@ -233,6 +243,8 @@ def _t_filter_plans(ctx: ToolContext, a: FilterPlansArgs) -> dict[str, Any]:
         upd["weights"] = a.weights
     if a.utilization:
         upd["utilization"] = a.utilization
+    if a.medigap is not None:
+        upd["medigap"] = a.medigap
     ctx.profile = ctx.profile.model_copy(update=upd)
     ctx.canvas["profile_changed"] = True
     ests = run_compare(ctx)
@@ -253,21 +265,29 @@ def _t_estimate_costs(ctx: ToolContext, a: EstimateCostsArgs) -> dict[str, Any]:
     return {"estimates": rows, "src_ref": [r for e in rows for r in e["src_ref"]]}
 
 
+def _baseline_short(b: dict[str, Any]) -> dict[str, Any]:
+    keep = ("plan_key", "plan_name", "organization", "plan_type", "pdp_plan_key", "pdp_plan_name",
+            "monthly_premium_cents", "part_b_annual_cents", "part_b_deductible_cents", "part_a_deductible_cents",
+            "total_est_cents", "total_low_cents", "total_high_cents", "worst_case_cents", "drug_low_cents",
+            "drug_high_cents", "drugs_covered", "drugs_total", "components", "medigap", "notes")  # fmt: skip
+    return {k: b[k] for k in keep}
+
+
 def _t_compare_plans(ctx: ToolContext, a: ComparePlansArgs) -> dict[str, Any]:
-    ests = run_compare(ctx)
-    with ctx.engine.connect() as c:
-        params = repo.load_params(c, ctx.plan_year, ctx.settings)
+    ests, baseline, params = run_compare_full(ctx)
     rows = [e.as_dict() for e in ests]
+    base = baseline.as_dict()
     top = [r for r in rows if r["rank"]][: a.limit]
-    ctx.canvas.update({"tab": "table", "rows": rows, "top": [r["plan_key"] for r in top],
+    ctx.canvas.update({"tab": "table", "rows": rows, "baseline": base, "top": [r["plan_key"] for r in top],
                        "notes": approximation_notes(params)})  # fmt: skip
     return {
+        "baseline": _baseline_short(base),
         "top": [_short(r) for r in top],
         "ranked_count": sum(1 for r in rows if r["rank"]),
         "dropped": [{"plan_key": r["plan_key"], "reason": r["dropped_reason"]} for r in rows if not r["rank"]],
         "checklist": CHECKLIST,
         "approximation_notes": approximation_notes(params),
-        "src_ref": [ref for r in top for ref in r["src_ref"]],
+        "src_ref": [*base["src_ref"], *(ref for r in top for ref in r["src_ref"])],
     }
 
 
@@ -335,11 +355,13 @@ TOOLS: dict[str, Tool] = {
              LookupProviderArgs, _t_lookup_provider),
         Tool("search_plans", "List every plan offered in the user's county with basic facts.", SearchPlansArgs,
              _t_search_plans),
-        Tool("filter_plans", "Change the user's path, must-haves, weights or utilization and re-rank.",
+        Tool("filter_plans", "Change the user's path, must-haves, weights, utilization or the baseline's Medigap "
+             "assumption and re-rank.",
              FilterPlansArgs, _t_filter_plans),
         Tool("estimate_costs", "Estimated yearly costs for up to 5 plans in the user's county.", EstimateCostsArgs,
              _t_estimate_costs),
-        Tool("compare_plans", "Rank all plans in the user's county and return the top N (max 5) with the checklist.",
+        Tool("compare_plans", "Rank all plans in the user's county and return the top N (max 5) with the checklist, "
+             "plus the pinned 'Original Medicare + Part D (standard)' baseline (unranked; compare plans against it).",
              ComparePlansArgs, _t_compare_plans),
         Tool("explain_plan", "Details for one plan: costs, benefits, drug coverage.", ExplainPlanArgs,
              _t_explain_plan),

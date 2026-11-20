@@ -79,6 +79,11 @@ class FakeProvider:
                     f"{p['rank']}. {p['plan_name']} ({p['plan_key']}): about {dollars(p['total_est_cents'])} a year; "
                     f"worst case {dollars(p['worst_case_cents'])}."
                 )
+            if b := data.get("baseline"):
+                lines.append(
+                    "Compared with the standard Original Medicare + Part D option: about "
+                    f"{dollars(b['total_est_cents'])} a year."
+                )
             lines.append(
                 "Before you decide, confirm these in Medicare Plan Finder and call each plan to check your doctors."
             )

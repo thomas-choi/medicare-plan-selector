@@ -147,3 +147,18 @@ describe("intake: drug search always answers", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/at least 2 letters/);
   });
 });
+
+describe("intake: Medigap assumption for the standard option (WP11)", () => {
+  it("sends the plan and the quote in cents; no quote until one is typed", () => {
+    const onSubmit = setup();
+    fireEvent.change(screen.getByLabelText("Medigap policy"), { target: { value: "G" } });
+    expect(screen.getByText(/premium isn’t included until you enter a quote/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Compare plans" }));
+    expect(onSubmit.mock.calls[0][0].medigap).toEqual({ plan: "G", monthly_premium_cents: null });
+    fireEvent.change(screen.getByLabelText("Medigap monthly premium quote"), { target: { value: "145.50" } });
+    fireEvent.click(screen.getByRole("button", { name: "Compare plans" }));
+    expect(onSubmit.mock.calls[1][0].medigap).toEqual({ plan: "G", monthly_premium_cents: 14550 });
+    fireEvent.change(screen.getByLabelText("Medigap policy"), { target: { value: "" } });
+    expect(screen.queryByLabelText("Medigap monthly premium quote")).not.toBeInTheDocument();
+  });
+});

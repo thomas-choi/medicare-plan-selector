@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { Canvas as CanvasT, PlanRow } from "./api";
-import { money, range, stars } from "./format";
+import { delta, money, range, stars, worstCase } from "./format";
 import { RatingWidget } from "./Feedback";
 
 type Tab = "table" | "chart" | "side_by_side" | "checklist";
@@ -68,10 +68,16 @@ export function Canvas({ canvas, checklist, estimateDisclaimer, tab, onTab, sele
           </button>
         ))}
       </div>
-      {tab === "table" && <PlanTable rows={rows} selected={selected} onSelect={onSelect} />}
+      {tab === "table" && (
+        <PlanTable rows={rows} baseline={canvas.baseline} selected={selected} onSelect={onSelect} />
+      )}
       {tab === "chart" && <CostChart rows={rows.filter((r) => r.rank !== null).slice(0, 10)} />}
       {tab === "side_by_side" && (
-        <SideBySide rows={rows.filter((r) => selected.includes(r.plan_key))} fallback={top} />
+        <SideBySide
+          rows={rows.filter((r) => selected.includes(r.plan_key))}
+          fallback={top}
+          baseline={canvas.baseline}
+        />
       )}
       {tab === "checklist" && (
         <ol className="checklist">
@@ -97,12 +103,21 @@ export function Canvas({ canvas, checklist, estimateDisclaimer, tab, onTab, sele
   );
 }
 
+/** The pinned "Original Medicare + Part D (standard)" row's subtitle: what it is made of. */
+export function baselineParts(b: PlanRow): string {
+  const parts = ["Part A", "Part B", b.pdp_plan_name ? `drug plan ${b.pdp_plan_name}` : "no drug plan found"];
+  if (b.medigap?.plan) parts.push(b.components?.find((c) => c.kind === "medigap")?.label ?? "Medigap");
+  return parts.join(" + ");
+}
+
 export function PlanTable({
   rows,
+  baseline,
   selected,
   onSelect,
 }: {
   rows: PlanRow[];
+  baseline?: PlanRow;
   selected: string[];
   onSelect: (k: string[]) => void;
 }) {
@@ -147,9 +162,36 @@ export function PlanTable({
             {th("worst_case_cents", "Worst case")}
             {th("star_overall", "Stars")}
             <th>Drugs covered</th>
+            <th>vs. standard</th>
           </tr>
         </thead>
         <tbody>
+          {baseline && (
+            // Pinned first row: never sorted, never ranked, always shown (addendum A5.4).
+            <tr className="baseline" aria-label={`Standard: ${baseline.plan_name}`}>
+              <td>
+                <span className="sub">Always compared</span>
+              </td>
+              <td>
+                <span className="badge">Standard</span>
+              </td>
+              <td>
+                <div>{baseline.plan_name}</div>
+                <div className="sub">{baselineParts(baseline)}</div>
+              </td>
+              <td>{range(baseline.total_low_cents, baseline.total_high_cents)}</td>
+              <td>
+                {money(baseline.monthly_premium_cents)}
+                <div className="sub">+ Part B</div>
+              </td>
+              <td>{worstCase(baseline)}</td>
+              <td>{stars(null)}</td>
+              <td>
+                {baseline.drugs_covered}/{baseline.drugs_total}
+              </td>
+              <td>—</td>
+            </tr>
+          )}
           {sorted.map((r) => (
             <tr key={r.plan_key} className={r.rank === null ? "dropped" : ""}>
               <td>
@@ -175,6 +217,7 @@ export function PlanTable({
               <td>
                 {r.drugs_covered}/{r.drugs_total}
               </td>
+              <td>{baseline ? delta(r.delta_vs_baseline_cents) : "—"}</td>
             </tr>
           ))}
         </tbody>
@@ -240,20 +283,42 @@ export function CostChart({ rows }: { rows: PlanRow[] }) {
   );
 }
 
-export function SideBySide({ rows, fallback }: { rows: PlanRow[]; fallback: PlanRow[] }) {
-  const show = (rows.length >= 2 ? rows : fallback).slice(0, 5);
-  if (show.length < 2) return <p>Select 2–5 plans in the table to compare them side by side.</p>;
+export function SideBySide({
+  rows,
+  fallback,
+  baseline,
+}: {
+  rows: PlanRow[];
+  fallback: PlanRow[];
+  baseline?: PlanRow;
+}) {
+  const plans = (rows.length >= 2 ? rows : fallback).slice(0, 5);
+  if (plans.length < (baseline ? 1 : 2))
+    return <p>Select 2–5 plans in the table to compare them side by side.</p>;
+  // The standard Original Medicare + Part D option is always the first column (addendum A5.4).
+  const show = baseline ? [baseline, ...plans] : plans;
   const lines: [string, (r: PlanRow) => string][] = [
-    ["Plan ID", (r) => r.plan_key],
+    ["Plan ID", (r) => (r.is_baseline ? `Drug plan ${r.pdp_plan_key ?? "none"}` : r.plan_key)],
     ["Type", (r) => `${r.plan_type ?? r.category}`],
     ["Stars", (r) => stars(r.star_overall)],
     ["Premium / month", (r) => money(r.monthly_premium_cents)],
-    ["Part D deductible", (r) => money(r.part_d_deductible_cents ?? 0)],
-    ["Yearly out-of-pocket cap (in network)", (r) => money(r.moop_cents, { whole: true })],
+    ["Part B premium / month", (r) => money(r.part_b_annual_cents / 12)],
+    [
+      "Deductibles",
+      (r) =>
+        r.is_baseline
+          ? `Part B ${money(r.part_b_deductible_cents ?? 0, { whole: true })} + drugs ${money(r.part_d_deductible_cents ?? 0)}`
+          : `Drugs ${money(r.part_d_deductible_cents ?? 0)}`,
+    ],
+    [
+      "Yearly out-of-pocket cap (in network)",
+      (r) => (r.is_baseline && r.moop_cents === null ? "No limit" : money(r.moop_cents, { whole: true })),
+    ],
     ["Drug costs / year", (r) => range(r.drug_low_cents, r.drug_high_cents)],
     ["Medical costs / year", (r) => range(r.medical_low_cents, r.medical_high_cents)],
     ["Estimated total / year", (r) => range(r.total_low_cents, r.total_high_cents)],
-    ["Worst case / year", (r) => money(r.worst_case_cents, { whole: true })],
+    ["vs. standard / year", (r) => (r.is_baseline ? "—" : delta(r.delta_vs_baseline_cents))],
+    ["Worst case / year", (r) => worstCase(r)],
     ["Drugs covered", (r) => `${r.drugs_covered} of ${r.drugs_total}`],
   ];
   return (
@@ -263,7 +328,9 @@ export function SideBySide({ rows, fallback }: { rows: PlanRow[]; fallback: Plan
           <tr>
             <th />
             {show.map((r) => (
-              <th key={r.plan_key}>{r.plan_name}</th>
+              <th key={r.plan_key} className={r.is_baseline ? "baseline" : undefined}>
+                {r.is_baseline && <span className="badge">Standard</span>} {r.plan_name}
+              </th>
             ))}
           </tr>
         </thead>
@@ -291,6 +358,23 @@ export function SideBySide({ rows, fallback }: { rows: PlanRow[]; fallback: Plan
               </td>
             ))}
           </tr>
+          {baseline && (
+            <tr>
+              <th scope="row">Notes</th>
+              {show.map((r) => (
+                <td key={r.plan_key}>
+                  {r.is_baseline && (
+                    <ul>
+                      {r.medigap?.rule_note && <li>{r.medigap.rule_note}</li>}
+                      {r.notes.map((n) => (
+                        <li key={n}>{n}</li>
+                      ))}
+                    </ul>
+                  )}
+                </td>
+              ))}
+            </tr>
+          )}
         </tbody>
       </table>
     </div>

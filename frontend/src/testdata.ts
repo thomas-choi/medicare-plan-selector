@@ -101,3 +101,40 @@ export function mockFetch(routes: Record<string, Handler | unknown>) {
   vi.stubGlobal("fetch", fn);
   return calls;
 }
+
+/** The pinned "Original Medicare + Part D (standard)" row (addendum A5). */
+export const BASELINE: PlanRow = plan({
+  plan_key: "BASELINE",
+  plan_name: "Original Medicare + Part D (standard)",
+  organization: "Original Medicare + PDP Org",
+  category: "BASELINE",
+  plan_type: "Original Medicare + PDP",
+  path: "original",
+  star_overall: null,
+  monthly_premium_cents: 600,
+  premium_annual_cents: 7200,
+  moop_cents: null,
+  worst_case_cents: null,
+  total_low_cents: 500000,
+  total_high_cents: 520000,
+  total_est_cents: 510000,
+  rank: null,
+  is_baseline: true,
+  pinned: true,
+  pdp_plan_key: "S4802_134_0",
+  pdp_plan_name: "Test PDP (PDP)",
+  part_b_deductible_cents: 29200,
+  components: [
+    { kind: "part_a", label: "Part A (hospital)", monthly_cents: 0, annual_cents: 0 },
+    { kind: "part_b", label: "Part B (medical)", monthly_cents: 20940, annual_cents: 251280 },
+    { kind: "pdp", label: "Test PDP (PDP)", plan_key: "S4802_134_0", monthly_cents: 600, annual_cents: 7200 },
+  ],
+  medigap: { plan: null, premium_included: false, rule_note: "No Medigap: no yearly out-of-pocket limit." },
+  notes: ["Part A premium assumed $0."],
+});
+
+/** Plan rows with their difference to BASELINE (total_est − 510000). */
+export const ROWS_VS_BASELINE: PlanRow[] = ROWS.map((r) => ({
+  ...r,
+  delta_vs_baseline_cents: r.total_est_cents - 510000,
+}));

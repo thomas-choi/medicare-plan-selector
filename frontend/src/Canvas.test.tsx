@@ -51,3 +51,47 @@ describe("canvas", () => {
     expect(onTab).toHaveBeenCalledWith("chart");
   });
 });
+
+describe("standard Original Medicare + Part D baseline (B8)", () => {
+  it("is the first row with the Standard badge and stays first when sorting", async () => {
+    const { BASELINE, ROWS_VS_BASELINE } = await import("./testdata");
+    render(<PlanTable rows={ROWS_VS_BASELINE} baseline={BASELINE} selected={[]} onSelect={() => {}} />);
+    const first = () => screen.getAllByRole("row")[1];
+    expect(first()).toHaveClass("baseline");
+    expect(within(first()).getByText("Standard")).toBeInTheDocument();
+    expect(first()).toHaveTextContent("Part A + Part B + drug plan Test PDP (PDP)");
+    expect(within(first()).getByText("No limit")).toBeInTheDocument();
+    expect(screen.getAllByRole("row")[2]).toHaveTextContent("$1,871 less"); // 322855 − 510000, rounded
+    for (const col of ["Est. yearly cost", "Premium/mo", "Worst case", "Stars", "Rank"]) {
+      fireEvent.click(screen.getByRole("button", { name: col }));
+      expect(first()).toHaveClass("baseline");
+      fireEvent.click(screen.getByRole("button", { name: col }));
+      expect(first()).toHaveClass("baseline");
+    }
+  });
+
+  it("is always the first side-by-side column", async () => {
+    const { BASELINE, ROWS_VS_BASELINE } = await import("./testdata");
+    render(
+      <SideBySide rows={[ROWS_VS_BASELINE[1]]} fallback={ROWS_VS_BASELINE.slice(0, 2)} baseline={BASELINE} />,
+    );
+    const heads = screen.getAllByRole("columnheader").slice(1);
+    expect(heads[0]).toHaveTextContent("Standard Original Medicare + Part D (standard)");
+    expect(heads).toHaveLength(3);
+    expect(screen.getByText("Part B $292 + drugs $325.00")).toBeInTheDocument();
+    expect(screen.getAllByText("No limit")).toHaveLength(2); // out-of-pocket cap and worst case
+  });
+
+  it("is in the downloaded comparison", async () => {
+    const { BASELINE, ROWS_VS_BASELINE } = await import("./testdata");
+    const { comparisonMarkdown } = await import("./exportMd");
+    const md = comparisonMarkdown({ rows: ROWS_VS_BASELINE, baseline: BASELINE }, null, [], 2027);
+    const lines = md.split("\n");
+    const head = lines.findIndex((l) => l.startsWith("| Rank |"));
+    expect(lines[head + 2]).toMatch(
+      /^\| Standard \| Original Medicare \+ Part D \(standard\) \| drug plan S4802_134_0/,
+    );
+    expect(lines[head + 3]).toMatch(/\| \$1,871 less \|$/);
+    expect(md).toContain("- Part B (medical): $209.40/month");
+  });
+});

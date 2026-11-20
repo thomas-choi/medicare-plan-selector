@@ -1,6 +1,6 @@
 // Client-side "Download comparison" (DESIGN §8.5 Browser): built in memory and downloaded; nothing is stored.
 import type { Canvas, Profile } from "./api";
-import { money, range, stars } from "./format";
+import { delta, money, range, stars, worstCase } from "./format";
 
 export const DISCLAIMER_TEXT =
   "This is an independent, free comparison tool. It is not a licensed insurance agent or broker and is not " +
@@ -28,14 +28,29 @@ export function comparisonMarkdown(
   ];
   if (profile?.county_name) out.push(`County: ${profile.county_name}, ${profile.state ?? ""}`, "");
   if (profile?.drugs.length) out.push(`Drugs: ${profile.drugs.map((d) => d.name).join(", ")}`, "");
+  const b = canvas.baseline;
   out.push(
-    "| Rank | Plan | ID | Est. yearly cost | Premium/mo | Worst case | Stars | Drugs covered |",
-    "|---|---|---|---|---|---|---|---|",
+    "| Rank | Plan | ID | Est. yearly cost | Premium/mo | Worst case | Stars | Drugs covered | vs. standard |",
+    "|---|---|---|---|---|---|---|---|---|",
   );
+  if (b) {
+    out.push(
+      `| Standard | ${b.plan_name} | drug plan ${b.pdp_plan_key ?? "none"} | ${range(b.total_low_cents, b.total_high_cents)} | ${money(b.monthly_premium_cents)} + Part B | ${worstCase(b)} | ${stars(null)} | ${b.drugs_covered}/${b.drugs_total} | — |`,
+    );
+  }
   for (const r of ranked) {
     out.push(
-      `| ${r.rank} | ${r.plan_name.replace(/\|/g, "/")} | ${r.plan_key} | ${range(r.total_low_cents, r.total_high_cents)} | ${money(r.monthly_premium_cents)} | ${money(r.worst_case_cents, { whole: true })} | ${stars(r.star_overall)} | ${r.drugs_covered}/${r.drugs_total} |`,
+      `| ${r.rank} | ${r.plan_name.replace(/\|/g, "/")} | ${r.plan_key} | ${range(r.total_low_cents, r.total_high_cents)} | ${money(r.monthly_premium_cents)} | ${money(r.worst_case_cents, { whole: true })} | ${stars(r.star_overall)} | ${r.drugs_covered}/${r.drugs_total} | ${b ? delta(r.delta_vs_baseline_cents) : "—"} |`,
     );
+  }
+  if (b) {
+    out.push("", "## Standard option: Original Medicare + Part D", "");
+    for (const c of b.components ?? [])
+      out.push(
+        `- ${c.label}: ${c.monthly_cents === null ? "premium not included" : `${money(c.monthly_cents)}/month`}`,
+      );
+    if (b.medigap?.rule_note) out.push(`- ${b.medigap.rule_note}`);
+    for (const n of b.notes) out.push(`- ${n}`);
   }
   if (dropped.length) {
     out.push("", "## Not ranked", "");
