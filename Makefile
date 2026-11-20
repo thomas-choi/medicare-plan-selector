@@ -33,7 +33,9 @@ DEVDB := $(LOAD_ENV) . $(CURDIR)/scripts/devdb.sh;
 # would silently wipe the schema and data. To apply a changed mysql/redis config: make stack-down && make stack-up.
 # When .env points the URLs at another machine (e.g. ml3090 using ml3060's stack), only check that it answers.
 stack-up:  ## MySQL 8.4 (:3307) and Redis 7.4 (:6380, no persistence) for the app; local, or the remote one in .env
-	@$(DEVDB) if [ -n "$$DEV_DB_REMOTE" ]; then devdb_check_remote; else $(MAKE) --no-print-directory local-stack-up; fi
+	@$(DEVDB) if [ -n "$$DEV_DB_REMOTE" ]; then \
+	  [ -n "$$DEV_REDIS_REMOTE" ] || $(COMPOSE) up -d --wait --no-recreate redis; devdb_check_remote; \
+	else $(MAKE) --no-print-directory local-stack-up; fi
 
 # Always this machine's stack: the backend tests create msp_test_* databases and drive `docker compose` themselves.
 local-stack-up:
