@@ -45,8 +45,9 @@ DEFAULT_PRICE_BAND_30D = (1_000, 60_000)  # tier unknown (drug not on formulary)
 # Insulin: $35 per month's supply cap for covered insulin (Inflation Reduction Act).
 INSULIN_MONTHLY_CAP_CENTS = 3_500
 
-# Original Medicare (no Medigap; Medigap is post-MVP). Part A deductible per benefit period: 2026 value, placeholder.
-PART_A_DEDUCTIBLE_CENTS = 173_600
+# Coinsurance assumed where a plan's cost sharing is missing from the CMS file (the Original Medicare Part B rate).
+# The per-year Original Medicare amounts (Part A/B deductibles, Part B premium, Medigap rules) live in
+# `medicare_params`, loaded with the ingest from cited values in sources/<year>.yaml (MedicareParams below).
 PART_B_COINSURANCE_PCT = 20
 
 PHARMACY_TYPES = ("retail", "pref_retail", "mail", "pref_mail")
@@ -55,12 +56,14 @@ DAYS_SUPPLY = (30, 60, 90)
 
 @dataclass(frozen=True)
 class Weights:
-    """User weights for the neutral score (DESIGN §6.3). Only these four inputs exist; there are no sponsor fields."""
+    """User weights for the neutral score (DESIGN §6.3). Only these inputs exist; there are no sponsor fields."""
 
     total_cost: float = 0.6
     worst_case: float = 0.2
     stars: float = 0.1
     must_have_fit: float = 0.1
+    # Share of must-keep doctors listed in the plan's directory (unknown counts 0.5). 0 by default (addendum A3.3).
+    doctor_fit: float = 0.0
 
     def as_dict(self) -> dict[str, float]:
         return {
@@ -68,7 +71,31 @@ class Weights:
             "worst_case": self.worst_case,
             "stars": self.stars,
             "must_have_fit": self.must_have_fit,
+            "doctor_fit": self.doctor_fit,
         }
+
+
+@dataclass(frozen=True)
+class MedicareParams:
+    """Original Medicare and Medigap amounts for one plan year (addendum A5.2). Cents unless noted.
+
+    `src_ref` maps each group (`part_b`, `part_a`, `medigap_hd`, `medigap_n`) to its citation.
+    """
+
+    part_b_premium_monthly_cents: int
+    part_b_deductible_cents: int
+    part_b_coins_pct: int
+    part_a_deductible_cents: int
+    part_a_day61_cents: int
+    part_a_lifetime_cents: int
+    snf_day21_cents: int
+    medigap_hd_deductible_cents: int
+    medigap_n_office_copay_cents: int
+    medigap_n_er_copay_cents: int
+    src_ref: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def ref(self, group: str) -> dict[str, Any]:
+        return self.src_ref.get(group) or {"source": "params", "vintage": "unknown", "row": group}
 
 
 @dataclass(frozen=True)
@@ -76,14 +103,20 @@ class CostParams:
     plan_year: int
     std_deductible_cents: int
     oop_threshold_cents: int
-    part_b_premium_monthly_cents: int
-    part_b_deductible_cents: int
-    part_b_vintage: str
+    medicare: MedicareParams
     part_d_src_ref: dict[str, Any] = field(default_factory=dict)
 
     @property
+    def part_b_premium_monthly_cents(self) -> int:
+        return self.medicare.part_b_premium_monthly_cents
+
+    @property
+    def part_b_deductible_cents(self) -> int:
+        return self.medicare.part_b_deductible_cents
+
+    @property
     def part_b_src_ref(self) -> dict[str, Any]:
-        return {"source": "S7", "vintage": self.part_b_vintage, "row": "part_b_placeholder"}
+        return self.medicare.ref("part_b")
 
 
 APPROXIMATION_NOTES = (
@@ -93,6 +126,7 @@ APPROXIMATION_NOTES = (
     "(January 2027). Check exact prices in Medicare Plan Finder.",
     "Medical costs use a simple yearly visit pattern and assumed allowed amounts; Medicare Advantage costs are "
     "capped at the plan's in-network maximum out-of-pocket (MOOP).",
-    "The Part B premium is a placeholder (2026 amount) until CMS publishes the 2027 amount.",
+    "Every total includes the standard Part B premium; Original Medicare rows also use the Part B deductible "
+    "and 20% coinsurance and the Part A deductible for a hospital stay.",
     "Provider networks are not in CMS public files: call the plan to confirm your doctors.",
 )

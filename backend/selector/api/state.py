@@ -17,6 +17,7 @@ from selector.config import Settings
 from selector.db import make_engine
 from selector.geo.hud import HudClient
 from selector.lookups import NppesClient, RxNavClient
+from selector.network import DirectoryChecker, OptOutConfig
 from selector.quotas import Quotas
 from selector.store import write_guard
 from selector.store.base import SessionHandle, SessionStore
@@ -37,6 +38,7 @@ class AppState:
     hud: HudClient | None
     rxnav: RxNavClient | None
     nppes: NppesClient | None
+    directory: DirectoryChecker | None = None
     quotas: Quotas | None = None
     extras: dict[str, Any] = field(default_factory=dict)
 
@@ -95,4 +97,11 @@ def build_state(
         hud=HudClient(token, s.hud_api_base) if token and lookups else None,
         rxnav=RxNavClient() if lookups else None,
         nppes=NppesClient() if lookups else None,
+        directory=DirectoryChecker(
+            OptOutConfig(s.optout_url, s.optout_vintage),
+            min_interval_s=s.directory_min_interval_s,
+            budget_s=s.directory_budget_s,
+        )
+        if lookups
+        else None,
     )

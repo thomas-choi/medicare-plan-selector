@@ -40,8 +40,14 @@ class DrugIn(_Strict):
 
 
 class ProviderIn(_Strict):
+    """A doctor: free-text name, or picked from the NPI registry (`npi` set). Only `must_keep` doctors with an NPI
+    count for the optional directory filter and weight (addendum A3.3)."""
+
     name: str = Field(min_length=1, max_length=120)
     npi: str | None = Field(default=None, pattern=r"^\d{10}$")
+    must_keep: bool = False
+    specialty: str | None = Field(default=None, max_length=120)
+    city: str | None = Field(default=None, max_length=64)
 
 
 class MustHavesIn(_Strict):
@@ -50,6 +56,9 @@ class MustHavesIn(_Strict):
     min_stars: float | None = Field(default=None, ge=1, le=5)
     max_moop_cents: int | None = Field(default=None, ge=0, le=100_000_000)
     max_monthly_premium_cents: int | None = Field(default=None, ge=0, le=10_000_000)
+    dental: bool = False
+    dental_min_max_cents: int | None = Field(default=None, ge=0, le=10_000_000)
+    doctors_listed: bool = False
 
 
 class WeightsIn(_Strict):
@@ -57,6 +66,14 @@ class WeightsIn(_Strict):
     worst_case: float = Field(default=0.2, ge=0, le=1)
     stars: float = Field(default=0.1, ge=0, le=1)
     must_have_fit: float = Field(default=0.1, ge=0, le=1)
+    doctor_fit: float = Field(default=0.0, ge=0, le=1)
+
+
+class MedigapIn(_Strict):
+    """An assumption for the baseline row (addendum A5): which Medigap plan, and the user's own premium quote."""
+
+    plan: Literal["G", "N", "HDG"] | None = None
+    monthly_premium_cents: int | None = Field(default=None, ge=0, le=500_000)
 
 
 class Profile(_Strict):
@@ -72,6 +89,7 @@ class Profile(_Strict):
     must_haves: MustHavesIn = Field(default_factory=MustHavesIn)
     weights: WeightsIn = Field(default_factory=WeightsIn)
     snp_eligible: bool = False
+    medigap: MedigapIn = Field(default_factory=MedigapIn)
     current_plan_key: str | None = Field(default=None, pattern=r"^[HRSE]\d{4}_\d{3}_\d{1,3}$")
 
     @field_validator("drugs")
@@ -95,9 +113,14 @@ class Profile(_Strict):
                 min_stars=mh.min_stars,
                 max_moop_cents=mh.max_moop_cents,
                 max_monthly_premium_cents=mh.max_monthly_premium_cents,
+                dental=mh.dental,
+                dental_min_max_cents=mh.dental_min_max_cents,
+                doctors_listed=mh.doctors_listed,
             ),
             snp_eligible=self.snp_eligible,
-            weights=Weights(w.total_cost, w.worst_case, w.stars, w.must_have_fit),
+            weights=Weights(w.total_cost, w.worst_case, w.stars, w.must_have_fit, w.doctor_fit),
+            medigap_plan=self.medigap.plan,
+            medigap_premium_monthly_cents=self.medigap.monthly_premium_cents if self.medigap.plan else None,
         )
 
     def summary_for_prompt(self) -> dict[str, Any]:
@@ -108,7 +131,9 @@ class Profile(_Strict):
             "drug_count": len(self.drugs),
             "drugs": [d.name for d in self.drugs],
             "doctor_count": len(self.providers),
+            "doctors_with_npi": sum(1 for p in self.providers if p.npi),
             "utilization": self.utilization,
             "must_haves": self.must_haves.model_dump(exclude_defaults=True),
             "snp_eligible": self.snp_eligible,
+            "medigap_assumption": self.medigap.plan,
         }

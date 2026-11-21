@@ -1,6 +1,39 @@
 {
+  "check_provider_network": {
+    "description": "Whether plans' public provider directories list these doctors (by NPI): listed / not_listed / unknown / unavailable, with the check date. A listing is not a guarantee: always tell the user to call the plan to confirm.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "npis": {
+          "description": "10-digit NPIs from lookup_provider",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 15,
+          "minItems": 1,
+          "title": "Npis",
+          "type": "array"
+        },
+        "plan_keys": {
+          "description": "plan IDs in the county, or BASELINE",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 60,
+          "minItems": 1,
+          "title": "Plan Keys",
+          "type": "array"
+        }
+      },
+      "required": [
+        "npis",
+        "plan_keys"
+      ],
+      "type": "object"
+    }
+  },
   "compare_plans": {
-    "description": "Rank all plans in the user's county and return the top N (max 5) with the checklist.",
+    "description": "Rank all plans in the user's county and return the top N (max 5) with the checklist, plus the pinned 'Original Medicare + Part D (standard)' baseline (unranked; compare plans against it).",
     "parameters": {
       "additionalProperties": false,
       "properties": {
@@ -54,15 +87,78 @@
     }
   },
   "filter_plans": {
-    "description": "Change the user's path, must-haves, weights or utilization and re-rank.",
+    "description": "Change the user's path, must-haves, weights, utilization or the baseline's Medigap assumption and re-rank.",
     "parameters": {
       "$defs": {
+        "MedigapIn": {
+          "additionalProperties": false,
+          "description": "An assumption for the baseline row (addendum A5): which Medigap plan, and the user's own premium quote.",
+          "properties": {
+            "monthly_premium_cents": {
+              "anyOf": [
+                {
+                  "maximum": 500000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Monthly Premium Cents"
+            },
+            "plan": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "G",
+                    "N",
+                    "HDG"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Plan"
+            }
+          },
+          "title": "MedigapIn",
+          "type": "object"
+        },
         "MustHavesIn": {
           "additionalProperties": false,
           "properties": {
             "all_drugs_covered": {
               "default": false,
               "title": "All Drugs Covered",
+              "type": "boolean"
+            },
+            "dental": {
+              "default": false,
+              "title": "Dental",
+              "type": "boolean"
+            },
+            "dental_min_max_cents": {
+              "anyOf": [
+                {
+                  "maximum": 10000000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Dental Min Max Cents"
+            },
+            "doctors_listed": {
+              "default": false,
+              "title": "Doctors Listed",
               "type": "boolean"
             },
             "max_monthly_premium_cents": {
@@ -129,6 +225,13 @@
         "WeightsIn": {
           "additionalProperties": false,
           "properties": {
+            "doctor_fit": {
+              "default": 0.0,
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Doctor Fit",
+              "type": "number"
+            },
             "must_have_fit": {
               "default": 0.1,
               "maximum": 1,
@@ -164,6 +267,18 @@
       },
       "additionalProperties": false,
       "properties": {
+        "medigap": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MedigapIn"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Medigap assumption for the baseline row only"
+        },
         "must_haves": {
           "anyOf": [
             {
@@ -224,8 +339,31 @@
       "type": "object"
     }
   },
+  "get_plan_benefits": {
+    "description": "Dental benefits of one plan from the CMS plan benefit file: preventive and comprehensive cost sharing, yearly maximum and limits. Not included in cost estimates.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "const": "dental",
+          "default": "dental",
+          "title": "Category",
+          "type": "string"
+        },
+        "plan_key": {
+          "pattern": "^[HRSE]\\d{4}_\\d{3}_\\d{1,3}$",
+          "title": "Plan Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan_key"
+      ],
+      "type": "object"
+    }
+  },
   "lookup_provider": {
-    "description": "Find a doctor's NPI. Network status is never known: tell the user to call the plan.",
+    "description": "Find a doctor's NPI (NPPES). Use check_provider_network for directory listings.",
     "parameters": {
       "additionalProperties": false,
       "properties": {

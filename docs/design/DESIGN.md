@@ -1,7 +1,7 @@
 # Medicare Plan Selector: Technical Design v0.3
 
 Repo: https://github.com/thomas-choi/medicare-plan-selector (**public**). Service: `https://med.thomas-choi.com:<MED_PUBLIC_PORT>` (**public, multi-user**).
-Status: **Signed off by Thomas 2026-11-12 with the no-save addition** (§8.5). **v0.4 addendum (draft, 2026-11-19): `DESIGN-v0.4-ADDENDUM.md`** adds the drug-search fix, doctors/network check, dental and the pinned Original Medicare + Part D baseline; where they differ, the addendum wins. Defaults in OPEN-QUESTIONS are accepted unless Thomas objects. Author: Philip. Implementer: Claude Code worker. Date: 2026-11-12 (MST, America/Phoenix).
+Status: **Signed off by Thomas 2026-11-12 with the no-save addition** (§8.5). **v0.4 addendum (draft, 2026-11-19, A10 on 2026-11-20): `DESIGN-v0.4-ADDENDUM.md`** adds the drug-search fix, doctors/network check, dental, the pinned Original Medicare + Part D baseline, and the app-local Redis / local-MySQL-for-tests rule (A10); where they differ, the addendum wins. Defaults in OPEN-QUESTIONS are accepted unless Thomas objects. Author: Philip. Implementer: Claude Code worker. Date: 2026-11-12 (MST, America/Phoenix).
 
 Key dates:
 - Open Enrollment for plan year 2027 ends **Dec 7, 2026**.
@@ -125,6 +125,241 @@ flowchart TD
 ---
 
 ## 5. Data model (MySQL, utf8mb4)
+
+### 5.0 Data model diagrams
+
+Database `msp` (MySQL, utf8mb4; `MYSQL_DATABASE: msp` in `docker-compose.prod.yml`). The schema is built by the Alembic migrations in `backend/alembic/versions/` (`0001` baseline, `0002` SSA county re-key + inpatient intervals, `0003` feedback context). Solid lines in the ER diagrams are real foreign keys; dotted lines are logical joins on `(plan_year, plan_key)` and similar keys that are not enforced as foreign keys, because the plan tables are rebuilt per ingest.
+
+**Database `msp`: overview, database → table groups → tables (primary keys in brackets).**
+
+```mermaid
+---
+title: "Database msp: table groups and tables"
+---
+flowchart LR
+    DB[("msp<br/>MySQL 8, utf8mb4")]
+
+    DB --> PUB["Public plan data<br/>(keyed by plan_year, every row has src_ref)"]
+    DB --> USR["User and session data<br/>(saved mode only)"]
+    DB --> OPS["Usage, counters, audit<br/>(no PHI)"]
+
+    PUB --> ingest_run["ingest_run<br/>[id]"]
+    PUB --> county["county<br/>[ssa_code]"]
+    PUB --> zip_county_cache["zip_county_cache<br/>[zip, fips]"]
+    PUB --> plan["plan<br/>[plan_year, plan_key]"]
+    PUB --> plan_county["plan_county<br/>[plan_year, plan_key, ssa_code]"]
+    PUB --> pbp_benefit["pbp_benefit<br/>[plan_year, plan_key, service_code]"]
+    PUB --> pbp_inpatient_interval["pbp_inpatient_interval<br/>[plan_year, plan_key, seq]"]
+    PUB --> plan_formulary["plan_formulary<br/>[plan_year, plan_key]"]
+    PUB --> formulary["formulary<br/>[plan_year, formulary_id, ndc]"]
+    PUB --> tier_cost["tier_cost<br/>[plan_year, plan_key, tier, phase, pharmacy_type, days_supply]"]
+    PUB --> insulin_cost["insulin_cost<br/>[plan_year, plan_key, tier, pharmacy_type, days_supply]"]
+    PUB --> drug_price_proxy["drug_price_proxy<br/>[id]"]
+    PUB --> part_d_params["part_d_params<br/>[plan_year]"]
+
+    USR --> session["session<br/>[id_hash]"]
+    USR --> profile["profile<br/>[session_id] 🔒"]
+    USR --> chat_msg["chat_msg<br/>[session_id, seq] 🔒"]
+    USR --> recommendation["recommendation<br/>[id]"]
+    USR --> feedback["feedback<br/>[id] 🔒 optional"]
+    USR --> consent_log["consent_log<br/>[id]"]
+
+    OPS --> usage_ledger["usage_ledger<br/>[id]"]
+    OPS --> usage_daily["usage_daily<br/>[day, provider, model, mode]"]
+    OPS --> feedback_counter["feedback_counter<br/>[day, plan_year, kind, value, ...]"]
+    OPS --> admin_audit["admin_audit<br/>[id]"]
+```
+
+**Database `msp`: public plan data, keys and references.**
+
+```mermaid
+---
+title: "Database msp: public plan data"
+---
+erDiagram
+    ingest_run {
+        bigint id PK
+        smallint plan_year
+        string source_id
+        string sha256
+        string status
+    }
+    county {
+        string ssa_code PK
+        string fips "indexed, nullable"
+        string state
+        string ma_region_code
+        string pdp_region_code
+    }
+    zip_county_cache {
+        string zip PK
+        string fips PK
+        decimal res_ratio
+    }
+    plan {
+        smallint plan_year PK
+        string plan_key PK "contract-plan-segment"
+        string contract_id
+        string plan_id
+        string segment_id
+        string ma_region_code
+        string pdp_region_code
+    }
+    plan_county {
+        smallint plan_year PK
+        string plan_key PK
+        string ssa_code PK
+    }
+    pbp_benefit {
+        smallint plan_year PK
+        string plan_key PK
+        string service_code PK
+    }
+    pbp_inpatient_interval {
+        smallint plan_year PK
+        string plan_key PK
+        smallint seq PK
+    }
+    plan_formulary {
+        smallint plan_year PK
+        string plan_key PK
+        string formulary_id
+    }
+    formulary {
+        smallint plan_year PK
+        string formulary_id PK
+        string ndc PK
+        string rxcui "indexed"
+        smallint tier
+    }
+    tier_cost {
+        smallint plan_year PK
+        string plan_key PK
+        smallint tier PK
+        string phase PK
+        string pharmacy_type PK
+        smallint days_supply PK
+    }
+    insulin_cost {
+        smallint plan_year PK
+        string plan_key PK
+        smallint tier PK
+        string pharmacy_type PK
+        smallint days_supply PK
+    }
+    drug_price_proxy {
+        bigint id PK
+        smallint plan_year
+        string plan_key "nullable"
+        string ndc
+    }
+    part_d_params {
+        smallint plan_year PK
+    }
+
+    plan ||..o{ plan_county : "plan_year, plan_key"
+    county ||..o{ plan_county : "ssa_code"
+    county ||..o{ zip_county_cache : "fips"
+    plan ||..o{ pbp_benefit : "plan_year, plan_key"
+    plan ||..o{ pbp_inpatient_interval : "plan_year, plan_key"
+    plan ||..|| plan_formulary : "plan_year, plan_key"
+    plan_formulary }o..o{ formulary : "plan_year, formulary_id"
+    plan ||..o{ tier_cost : "plan_year, plan_key"
+    plan ||..o{ insulin_cost : "plan_year, plan_key"
+    plan |o..o{ drug_price_proxy : "plan_year, plan_key (NULL = national)"
+    part_d_params ||..o{ plan : "plan_year"
+    ingest_run ||..o{ plan : "plan_year (provenance via src_ref)"
+```
+
+**Database `msp`: user, session and operations data, keys and references.**
+
+```mermaid
+---
+title: "Database msp: user, session and operations data"
+---
+erDiagram
+    session {
+        string id_hash PK
+        datetime expires_at
+        smallint plan_year
+        string ip_prefix_hash
+    }
+    profile {
+        string session_id PK, FK
+        string county_fips
+        blob zip_enc "encrypted"
+        blob drugs_enc "encrypted"
+        blob providers_enc "encrypted"
+        smallint key_version
+    }
+    chat_msg {
+        string session_id PK, FK
+        int seq PK
+        blob content_enc "encrypted"
+        smallint key_version
+    }
+    recommendation {
+        bigint id PK
+        string session_id FK "nullable"
+        smallint plan_year
+        smallint rank_pos
+        string plan_key
+    }
+    feedback {
+        bigint id PK
+        string session_id FK "NULL for no-save team message"
+        bigint recommendation_id FK "nullable"
+        string chosen_plan_key "nullable"
+        blob text_raw_enc "encrypted, opt-in"
+    }
+    consent_log {
+        bigint id PK
+        string session_id FK
+        string consent_version
+    }
+    usage_ledger {
+        bigint id PK
+        date day
+        string session_id_hash "no FK"
+    }
+    usage_daily {
+        date day PK
+        string provider PK
+        string model PK
+        string mode PK
+    }
+    feedback_counter {
+        date day PK
+        smallint plan_year PK
+        string kind PK
+        string value PK
+    }
+    admin_audit {
+        bigint id PK
+        string admin_subject
+        string action
+    }
+    plan {
+        smallint plan_year PK
+        string plan_key PK
+    }
+
+    session ||--o| profile : "ON DELETE CASCADE"
+    session ||--o{ chat_msg : "ON DELETE CASCADE"
+    session ||--o{ consent_log : "ON DELETE CASCADE"
+    session |o--o{ recommendation : "session_id"
+    session |o--o{ feedback : "session_id"
+    recommendation |o--o{ feedback : "recommendation_id"
+    plan ||..o{ recommendation : "plan_year, plan_key"
+    plan |o..o{ feedback : "chosen_plan_key"
+    session ||..o{ usage_ledger : "id_hash (hashed copy, no FK)"
+```
+
+Note: `county` was re-keyed from `fips` to `ssa_code` in migration `0002`, because CMS Landscape, S3 and PBP files carry SSA county codes, not FIPS. The text listing below still shows the v0.3 `county(fips PK, ...)` shape; the diagrams follow the migrations.
+
+
+### 5.1 Table listing
+
 
 **Public plan data.** Every table is keyed by `plan_year`, and every row has `src_ref`.
 ```
@@ -357,8 +592,8 @@ The trade-off is visible in the UI: *"No-save: nothing is kept on our servers af
 - `api`: FastAPI on uvicorn, 2 workers.
 - `ingest`: one-shot job, same image.
 - `purge`: daily cron or scheduler, deletes expired saved sessions.
-- `redis`: `redis:7` with `--save "" --appendonly no`, `/data` on tmpfs, a `maxmemory` limit with `volatile-ttl` eviction, an internal network only, and a password from `.env` (`REDIS_URL`).
-- `mysql`: either a container with a volume, or Thomas's existing MySQL.
+- `redis`: `redis:7` with `--save "" --appendonly no`, `/data` on tmpfs, a `maxmemory` limit with `volatile-ttl` eviction, an internal network only, and a password from `.env` (`REDIS_URL`). Redis is **app-local**: it starts and stops with the app stack (dev or prod compose). A shared or remote MySQL server does not provide Redis, and pointing make targets at a remote MySQL must not move Redis to that host (tests never use a remote MySQL). Details and env vars: addendum **A10** and `docs/OPERATION.md`.
+- `mysql`: either a container with a volume, or Thomas's existing MySQL (including a shared MySQL used from a coding host). MySQL location is independent of Redis.
 
 **Network and TLS:**
 - **Port:** `MED_PUBLIC_PORT` in `.env`; nginx listens there.
@@ -373,6 +608,8 @@ The trade-off is visible in the UI: *"No-save: nothing is kept on our servers af
 - **Backups:** nightly `mysqldump` of non-plan tables, encrypted. Plan data can be rebuilt from CMS.
 - **Releases:** the image is tagged by git SHA and recorded in `feedback.app_version`.
 - **Deploy approval:** a deploy or push happens only with Thomas's explicit approval, as in his standing workflow.
+
+**Dev and test data stores:** default `make test` uses this machine's compose MySQL (`127.0.0.1:3307`) and Redis (`127.0.0.1:6380`). Tests and host-side make targets take Redis settings independently of MySQL (`MSP_TEST_REDIS_URL`, or `MSP_TEST_REDIS_HOST` defaulting to `127.0.0.1`). Tests use this machine's MySQL only (they create and drop throwaway databases); the MySQL at `192.168.0.216` holds live data and is used only by the dev app through `.env`. `/api/ready` is unchanged: the process is not ready unless both Redis and the plan data answer. See addendum A10 and WP15; operator steps and variables: `docs/OPERATION.md`.
 
 ---
 

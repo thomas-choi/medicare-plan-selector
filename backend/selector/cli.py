@@ -163,6 +163,31 @@ def cmd_hud_load_file(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_directories_sync(args: argparse.Namespace) -> int:
+    """Seed directory_endpoint from sources/directories.yaml and refresh insurance_plan_map (addendum A3.5)."""
+    from selector.db import make_engine
+    from selector.directories import seed_endpoints, sync_endpoint
+    from selector.network import SOURCES_FILE, load_sources
+
+    endpoints, _, spec = load_sources(Path(args.sources) if args.sources else SOURCES_FILE)
+    notes = {str(e["id"]): str(e.get("notes") or "") for e in spec.get("endpoints", [])}
+    eng = make_engine(get_settings().effective_ingest_url)
+    with eng.begin() as conn:
+        n = seed_endpoints(conn, endpoints, notes, str(spec["verified_at"]))
+    print(f"directory_endpoint: {n} endpoints")
+    if args.seed_only:
+        return 0
+    failed = 0
+    for ep in endpoints:
+        if args.carrier and ep.id != args.carrier:
+            continue
+        r = sync_endpoint(eng, args.year, ep, max_pages=args.max_pages, min_interval_s=args.interval)
+        failed += r.error is not None and ep.usable
+        print(f"{ep.id}: {r.seen} InsurancePlans read, {r.mapped} matched to {args.year} plans"
+              + (f" ({r.error})" if r.error else ""))  # fmt: skip
+    return 1 if failed else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="selector")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -202,6 +227,17 @@ def build_parser() -> argparse.ArgumentParser:
     hf.add_argument("--quarter", type=int, choices=[1, 2, 3, 4])
     hf.add_argument("--state", help="only keep ZIPs whose county FIPS is in this 2-letter state")
     hf.set_defaults(func=cmd_hud_load_file)
+
+    dr = sub.add_parser("directories", help="public provider directories (Plan-Net FHIR) for doctor checks")
+    drsub = dr.add_subparsers(dest="dir_cmd", required=True)
+    ds = drsub.add_parser("sync", help="load sources/directories.yaml and map carriers' InsurancePlans to plans")
+    ds.add_argument("--year", type=int, required=True)
+    ds.add_argument("--carrier", help="only this endpoint id (e.g. uhc, humana)")
+    ds.add_argument("--max-pages", type=int, default=200, help="InsurancePlan pages per carrier (100 per page)")
+    ds.add_argument("--interval", type=float, default=1.0, help="seconds between requests to one host")
+    ds.add_argument("--seed-only", action="store_true", help="only load the endpoint list (no network)")
+    ds.add_argument("--sources", help="another directories.yaml (tests)")
+    ds.set_defaults(func=cmd_directories_sync)
 
     f = sub.add_parser("ephemeral-flush", help="delete all No-save (eph:*) keys; run at API start")
     f.set_defaults(func=cmd_ephemeral_flush)

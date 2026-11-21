@@ -237,3 +237,93 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
   - Standard `make test` (local stack) fully green: lint, backend, 43 Vitest tests.
   - Docs: added `qa/QA-REPORT-3306.md`; committed and pushed branch `qa/v0.4-3306-regression`
     (commit `570543a`); repo remote switched from https to SSH.
+## WP10–WP13 — Design v0.4 (2026-11-19, local branch `feat/v0.4`)
+- **WP10** 2027 Medicare amounts: `medicare_params` (Alembic `0004`), loaded by the ingest from cited values in
+  `sources/2027.yaml` (Part B $209.40/month, $292 deductible; Part A $1,776; Medigap HD $3,050; Plan N copays).
+  The 2026 Part B placeholder settings (`PART_B_*`) are gone. Golden Maricopa JSON: +$78/yr, ranks unchanged.
+- **WP11** Pinned "Original Medicare + Part D (standard)" baseline in every comparison: Part A + B + the
+  lowest-cost PDP for the user's drugs, optional Medigap G / N / HDG assumption (premium only from the user's quote),
+  never ranked or dropped, `delta_vs_baseline_cents` on every row. UI: first table row with a Standard badge, first
+  side-by-side column, export; Medigap inputs in the intake. Prompt `v2`.
+- **WP12** Dental from PBP b16: parser, `plan_dental` (Alembic `0005`), validation (every MA plan has a row; golden
+  H0028_028_0 $500/yr shared), Dental column and side-by-side services, must-haves "includes dental" / "dental
+  maximum at least $X", `GET /api/plans/{plan_key}/benefits`, tool `get_plan_benefits`. Not added to totals (Q16).
+- **WP13** Doctors: NPI pick (NPPES) with must-keep; listing status from carriers' public Plan-Net directories
+  (`network.py`, `directory_endpoint` + `insurance_plan_map`, Alembic `0006`, `selector directories sync`) and the
+  CMS opt-out list for Original Medicare rows; badges by default, optional filter (drops only `not_listed` /
+  `opted_out` must-keep doctors) and `doctor_fit` weight (0 by default); `POST /api/providers/network`, tool
+  `check_provider_network`; policy accepts a listing claim only with a `listed` tool row, the date and "call the plan".
+- Live checks (2026-11-19): real offline 2027 ingest into a scratch schema passes every validation (5,561 dental
+  rows); Humana directory sync maps all 4 Humana fixture plans and a 3-doctor check takes 4.1 s; UHC pages take
+  12–15 s (sync uses a 90 s timeout and `_elements`).
+- Deviations from the addendum: the baseline's "monthly premium" cell is PDP (+ Medigap quote) with "+ Part B"
+  under it, like every other row (Part B is a separate line), instead of Part B + PDP; the dental-use cost preset
+  (OD-16, optional) and WP14 (carrier PDFs) are not implemented; Humana's NPI search works (0 results = not listed).
+
+## Design — Redis is app-local (2026-11-20, local branch `fix/drug-search`)
+- Hermes QA against shared MySQL at 192.168.0.216:3306: 340 passed, 39 failed, 8 errors, all Redis connection
+  failures. Root cause: `backend/tests/conftest.py` built `REDIS_URL` from `MSP_TEST_MYSQL_HOST` and a hard-coded
+  dev password; `MSP_TEST_REDIS_PASSWORD` was ignored. `scripts/devdb.sh` also fell back Redis to the MySQL host.
+- Thomas: Redis stays with the app/local stack; the shared server is MySQL only. Readiness is unchanged.
+- Docs only (no code, Makefile, compose or test changes in this commit): addendum A10, DESIGN.md §10,
+  WP15 in `IMPLEMENTATION-PLAN.md` (owner: Claude worker on ml3090, review: Philip).
+
+## WP15 — Redis is app-local in tests and make targets
+- **When:** 2026-11-20 20:35 MST
+- **Who:** Claude (Claude Opus 5.5, coding worker)
+- **Reference:** WP15 in `docs/design/IMPLEMENTATION-PLAN.md`; addendum A10.4–A10.7 in
+  `docs/design/DESIGN-v0.4-ADDENDUM.md`; failures in `qa/QA-REPORT-3306.md` (39 failed + 8 errors, all Redis)
+- **What:**
+  - `backend/tests/conftest.py`: `redis_test_url()` (`MSP_TEST_REDIS_URL`, else `MSP_TEST_REDIS_HOST` default
+    `127.0.0.1`, `MSP_REDIS_PORT`, `MSP_TEST_REDIS_PASSWORD`) never uses the MySQL host; `mysql_test_url()` keeps the
+    `MSP_TEST_*_PASSWORD` overrides from `570543a` and fixes its three over-long lines (ruff E501, `make lint` failed).
+  - `scripts/devdb.sh`: with `REDIS_URL` unset, Redis is `127.0.0.1`, not the MySQL host; `devdb_check_remote` checks
+    only what is remote and no longer tells the operator to publish Redis on the MySQL server.
+  - `Makefile`: `test-backend` sets `MSP_TEST_REDIS_HOST` on its own (local bind), never from `MSP_TEST_MYSQL_HOST`;
+    `HOST_URL_HINT`, `stack-up` and `app-up` text say Redis stays on this machine.
+  - Comments only: `docker-compose.yml`, `docker-compose.prod.yml`, `.env.example`.
+  - New `docs/OPERATION.md` (local vs shared MySQL, app-local Redis, `MSP_TEST_*` table), linked from README.
+    README: corrected the "another machine's MySQL/Redis" section and the expected test counts.
+  - Tests: R1 `tests/unit/test_test_stores.py` (4), R2 and the `test-backend` recipe in `test_dev_tooling.py` (2).
+    R3–R5: existing tests unchanged and green.
+  - Result: `make test` green, 393 backend + 43 Vitest. R6 against `192.168.0.216:3306` with local Redis: 304 passed,
+    89 errors, **0 Redis errors**; every error is `Access denied for 'msp_migrator'@'192.168.0.212'` (accounts on the
+    shared server, see `qa/QA-REPORT-3306.md`).
+
+## Docs — A10 / plan / QA report aligned with the code after WP15
+- **When:** 2026-11-20 20:50 MST
+- **Who:** Claude (Claude Opus 5.5, coding worker)
+- **Reference:** Thomas's 2026-11-20 review request (verify `QA-REPORT-3306.md` and `DESIGN-v0.4-ADDENDUM.md`
+  against the code; check `DESIGN.md` and `IMPLEMENTATION-PLAN.md`); addendum A10; WP15 / R6
+- **What:**
+  - `DESIGN-v0.4-ADDENDUM.md` A10: status (WP15 done in `a3ce1d1`); A10.1 cites `qa/QA-REPORT-3306.md` and records
+    that its "Redis on .216" recommendation was not adopted; A10.2 notes what `7c062c4` and `570543a` had already
+    changed; A10.4 names the helpers and the `MSP_TEST_*_PASSWORD` variables; A10.5 accepts `7c062c4`'s
+    `redis:6379` rewrite of a local `REDIS_URL`; A10.6 adds the approval for `192.168.0.216:3306` and what the suite
+    does there; A10.7 fixes the `MSP_TEST_REDIS_PASSWORD` row and adds the three MySQL password rows; A10.8 records
+    the results; new **A10.9** (open, Thomas): test accounts the shared server needs for R6.
+  - `IMPLEMENTATION-PLAN.md`: v0.4 status (all of WP9–WP13 + WP15 on `fix/drug-search`, `feat/v0.4` fast-forwarded),
+    remaining order, WP15 row done, R6 open.
+  - `DESIGN.md` §10 and `CHANGES-FROM-v0.3.md`: point to `docs/OPERATION.md` / WP15 done.
+  - `qa/QA-REPORT-3306.md`: corrected code-under-test header (`feat/v0.4` @ `7c062c4`, not `10ee306`), WP labels,
+    local counts (387 backend / 43 Vitest on that code); recommendation marked superseded; follow-up section with the
+    WP15 fix, the lint failure, and the 2026-11-20 re-run (0 Redis errors, 89 MySQL access-denied).
+
+## Tests use this machine's MySQL only; 192.168.0.216 is live data
+- **When:** 2026-11-20 20:58 MST
+- **Who:** Claude (Claude Opus 5.5, coding worker)
+- **Reference:** Thomas's 2026-11-20 ruling ("MySQL at 192.168.0.216 is for live data only; use local MySQL when the
+  database can be thrown away and dropped"); addendum A10.3 / A10.6 / A10.8 / A10.9; IMPLEMENTATION-PLAN R6;
+  `qa/QA-REPORT-3306.md`
+- **What:**
+  - `backend/tests/conftest.py`: `mysql_host_is_local()` + `pytest_configure` guard: pytest stops with a clear
+    message when `MSP_TEST_MYSQL_HOST` is not this machine (loopback, its name, or one of its own addresses such as
+    `MSP_DB_BIND`). Test: `test_tests_refuse_a_remote_mysql`.
+  - Addendum A10: rule "tests use this machine's MySQL only" (A10.3, diagram); shared-MySQL test mode withdrawn and
+    A10.6 rewritten as tests (local) + dev app on live data (`msp_dev_*`, never `make ingest-dev` there); A10.7
+    rows; A10.8 acceptance and results; A10.9 (shared-server test accounts) withdrawn.
+  - `IMPLEMENTATION-PLAN.md`: status, remaining order, WP15 done, R6 replaced by "conftest refuses a remote MySQL".
+  - `DESIGN.md` §10, `design/README.md`, `CHANGES-FROM-v0.3.md`, `docs/OPERATION.md` (rewritten),
+    README correction, `.env.example` and Makefile comments: same rule.
+  - `qa/QA-REPORT-3306.md`: ruling section (this test mode is withdrawn).
+  - Live server check after the earlier probe/run: only `msp` exists, still at `0006`; nothing left behind.

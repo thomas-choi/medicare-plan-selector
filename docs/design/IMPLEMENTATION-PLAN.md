@@ -148,19 +148,22 @@ Each package is PR-sized, with tests first. A `docs/CHANGELOG.md` entry is requi
 
 ## v0.4 work packages (Thomas's test comments 2026-11-19; design in `DESIGN-v0.4-ADDENDUM.md`)
 
-Status: **draft for Thomas's sign-off**, except WP9, which is implemented on local branch `fix/drug-search`
-(`19111e0`, not pushed). Same rules as above: cumulative tests, the worker never pushes, merges, tags or deploys.
+Status (2026-11-20): WP9–WP13 and WP15 implemented; `fix/drug-search` holds all of them (WP10–WP13 came from
+`feat/v0.4`, merged with the QA branch `qa/v0.4-3306-regression`), and `feat/v0.4` is fast-forwarded to it. Tests use
+this machine's MySQL only; `192.168.0.216` is live data (addendum A10.3; R6 withdrawn). WP14 not started. See `docs/CHANGELOG.md`. Same rules as
+above: cumulative tests, the worker never pushes, merges, tags or deploys.
 
-Suggested order before Thomas enrolls (Nov 24): **WP9 → WP10 → WP11 → WP12**, then WP13; WP14 after enrollment.
+Remaining: WP14 after enrollment (Nov 24).
 
 | WP | Scope | Size | Depends on |
 |---|---|---|---|
 | **WP9** (done, local) | Drug search: `RxNavClient.find` (exact → ingredient → approximate), ranking, `matched_as`/`how` on `GET /api/drugs`, 4 s/8 s timeouts, 0.1 s spacing; intake states (Searching…, found, fallback, empty, error), Enter searches | S | – |
-| **WP10** | 2027 Medicare parameters: `medicare_params(plan_year PK, part_b_premium_cents, part_b_deductible_cents, part_b_coins_pct, part_a_deductible_cents, part_a_day61_cents, part_a_lifetime_cents, snf_day21_cents, medigap_hd_deductible_cents, src_ref)`; Alembic `0003`; seeded from `sources/2027.yaml` (values A5.2, cited); `CostParams` reads it; remove "2026 placeholder" notes | S | – |
-| **WP11** | Pinned baseline: `cost/baseline.py` (`build_baseline`), `cost/medigap.py` (G, N, HDG rules, premium optional), profile `medigap`, `delta_vs_baseline_cents`; `compare_plans` returns `baseline`; Canvas pins the row and side-by-side column; export includes it | M | WP10 |
-| **WP12** | Dental: parser `ingest/parsers/pbp_dental.py` for `pbp_b16_dental.txt`, `plan_dental` table (Alembic `0004`), fixture sample, validation (golden H0028_028_0 = $500/yr shared); `GET /api/plans/{plan_key}/benefits`; tool `get_plan_benefits`; Dental column, side-by-side section, must-haves; optional dental-use preset behind a flag | M | – |
-| **WP13** | Doctors: intake NPI pick via `GET /api/providers` with `must_keep`; `network.py` `DirectoryChecker` (Plan-Net FHIR), `sources/directories.yaml` seed (UHC, Humana first), `selector directories sync`, `insurance_plan_map`; CMS opt-out check for the baseline; `POST /api/providers/network`; tool `check_provider_network`; policy/validator change (listing status only); badges + optional filter/weight | L | WP11 (baseline badge) |
+| **WP10** (done, local) | 2027 Medicare parameters: `medicare_params(plan_year PK, part_b_premium_cents, part_b_deductible_cents, part_b_coins_pct, part_a_deductible_cents, part_a_day61_cents, part_a_lifetime_cents, snf_day21_cents, medigap_hd_deductible_cents, src_ref)`; Alembic `0004` (`0003` was taken); seeded from `sources/2027.yaml` (values A5.2, cited); `CostParams` reads it; remove "2026 placeholder" notes | S | – |
+| **WP11** (done, local) | Pinned baseline: `cost/baseline.py` (`build_baseline`), `cost/medigap.py` (G, N, HDG rules, premium optional), profile `medigap`, `delta_vs_baseline_cents`; `compare_plans` returns `baseline`; Canvas pins the row and side-by-side column; export includes it | M | WP10 |
+| **WP12** (done, local) | Dental: parser `ingest/parsers/pbp_dental.py` for `pbp_b16_dental.txt`, `plan_dental` table (Alembic `0005`), fixture sample, validation (golden H0028_028_0 = $500/yr shared); `GET /api/plans/{plan_key}/benefits`; tool `get_plan_benefits`; Dental column, side-by-side section, must-haves; optional dental-use preset behind a flag | M | – |
+| **WP13** (done, local) | Doctors: intake NPI pick via `GET /api/providers` with `must_keep`; `network.py` `DirectoryChecker` (Plan-Net FHIR), `sources/directories.yaml` seed (UHC, Humana first), `selector directories sync`, `insurance_plan_map` (Alembic `0006`); CMS opt-out check for the baseline; `POST /api/providers/network`; tool `check_provider_network`; policy/validator change (listing status only); badges + optional filter/weight | L | WP11 (baseline badge) |
 | **WP14** (optional) | Carrier documents: `selector docs fetch` (robots check, 1 req/5 s/host, PDF only, ≤15 MB, sha256, H-number check), `plan_document` table, links in side-by-side; no value extraction | M | – |
+| **WP15** (done, local) | Test/dev Redis is app-local (addendum A10). Decouple Redis from the MySQL host in `backend/tests/conftest.py`, `scripts/devdb.sh` and the Makefile (part already in `7c062c4`); document in `.env.example` and `docs/OPERATION.md`, correct `README.md`. `docker-compose.yml` / `docker-compose.prod.yml`: comments only (no functional change required). Readiness (`/api/ready`) is unchanged. Owner: Claude coding worker on ml3090; review: Philip. No push, merge or deploy without Thomas's approval | S | – |
 
 ### v0.4 tests (added to the cumulative suite)
 
@@ -191,3 +194,9 @@ Suggested order before Thomas enrolls (Nov 24): **WP9 → WP10 → WP11 → WP12
 | CD2 | WP14 | Rate limit: ≥5 s between requests to one host (fake clock) |
 | CD3 | WP14 | Non-PDF or >15 MB → rejected; PDF without the plan's H-number → `verified=false`, not shown |
 | CD4 | WP14 | Forbidden-files hook blocks any fetched PDF from being committed |
+| R1 | WP15 | `conftest.py`: `MSP_TEST_REDIS_URL` wins; with only `MSP_TEST_MYSQL_HOST` set, `REDIS_URL` uses host `127.0.0.1` (not the MySQL host) and `MSP_TEST_REDIS_PASSWORD` when set |
+| R2 | WP15 | `devdb.sh`: remote MySQL + unset or local `REDIS_URL` → Redis is local, `COMPOSE_REDIS_URL` is not forced to the MySQL host, `DEV_DB_REMOTE=1` |
+| R3 | WP15 | `devdb.sh`: explicit remote `REDIS_URL` still means remote Redis (existing `test_devdb_remote_stack_from_env_urls` still passes) |
+| R4 | WP15 | `make test` with no `MSP_TEST_*` still uses `local-stack-up` and the local ports; `test_app_up_never_recreates_the_tmpfs_stack` still holds (`--no-recreate`, `test-backend` depends on `local-stack-up`) |
+| R5 | WP15 | Existing readiness tests unchanged (`/api/ready` still requires Redis and plan data) |
+| R6 | WP15 | `conftest.py` refuses a `MSP_TEST_MYSQL_HOST` that is not this machine (tests create and drop databases; `192.168.0.216` is live data). Replaces the withdrawn "suite green against 192.168.0.216" (Thomas, 2026-11-20) |

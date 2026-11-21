@@ -111,15 +111,16 @@ class Settings(BaseSettings):
     hud_api_token: SecretStr = SecretStr("")
     hud_api_base: str = "https://www.huduser.gov/hudapi/public/usps"
 
+    # Doctor listing checks (design v0.4 addendum A3): public provider directories and the CMS opt-out list (S14).
+    # The compare request waits at most `directory_budget_s` for them; anything slower shows "can't check".
+    directory_budget_s: float = Field(default=8.0, ge=0.5, le=30)
+    directory_min_interval_s: float = Field(default=1.0, ge=0, le=10)  # per carrier host
+    optout_url: str = "https://data.cms.gov/data-api/v1/dataset/cc4e7ff6-9433-4765-b073-8bf1ce09093b/data"
+    optout_vintage: str = "Opt Out Affidavits 2026-09-01"
+
     # Admin API (DESIGN §7, Q2). nginx does basic auth + IP allowlist and then adds the header
     # `X-Admin-Gate: <ADMIN_GATE_SECRET>`; the API refuses admin calls without it. Blank = admin API off.
     admin_gate_secret: SecretStr = SecretStr("")
-
-    # Part B placeholders (S7: 2027 values not published as of 2026-11-12). Monthly premium and yearly deductible
-    # in cents; the defaults are the CMS 2026 values and are labelled as placeholders in every estimate.
-    part_b_premium_monthly_cents: int = 20290
-    part_b_deductible_cents: int = 28300
-    part_b_vintage: str = "2026 placeholder (2027 TBD)"
 
     # Data.
     plan_year: int = 2027

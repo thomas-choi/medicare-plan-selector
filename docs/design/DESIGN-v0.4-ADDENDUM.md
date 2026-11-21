@@ -1,8 +1,8 @@
 # Medicare Plan Selector: Design v0.4 Addendum (Thomas's test comments, 2026-11-19)
 
-Status: **Draft for Thomas's sign-off.** Author: Philip. Date: 2026-11-19 (MST, America/Phoenix).
+Status: **Draft for Thomas's sign-off.** Author: Philip. Date: 2026-11-19 (MST, America/Phoenix); A10 added 2026-11-20.
 Base: Design v0.3 (`DESIGN.md`, signed off 2026-11-12) and branch `feat/mvp-wp2-8` at `10ee306`.
-This addendum adds to v0.3; where it differs, the addendum wins. Section numbers below are `A1`–`A8`.
+This addendum adds to v0.3; where it differs, the addendum wins. Section numbers below are `A1`–`A10`.
 
 Thomas tested on ml3090 (UI on `http://192.168.0.216:8080`) and sent four comments:
 
@@ -23,6 +23,7 @@ Status labels as in v0.3: **V** verified (opened or called on the date shown), *
 |---|---|---|
 | v0.3 | 2026-11-12 | Signed off (no-save mode). |
 | **v0.4 (draft)** | 2026-11-19 | This addendum: drug-search fix (A2), doctors/network directory check (A3), dental from PBP b16 + carrier documents (A4), pinned Original Medicare + Part D baseline (A5), 2027 Part A/B amounts now **V** (A5.2), new API fields (A6), work packages WP9–WP14 and tests (A7, `IMPLEMENTATION-PLAN.md`), open decisions OD-12 to OD-21 (A8, `OPEN-QUESTIONS.md`). |
+| **v0.4 (draft)** | 2026-11-20 | A10: Redis is app-local; tests use this machine's MySQL only (192.168.0.216 is live data; shared-MySQL test mode withdrawn the same day). Thomas decided after the Hermes QA Redis failures. Code changes are WP15 (`IMPLEMENTATION-PLAN.md`), not this commit. |
 
 ### A1.1 Architecture after v0.4
 
@@ -585,7 +586,8 @@ Response additions:
 
 ## A7. Work packages and tests
 
-See `IMPLEMENTATION-PLAN.md` § "v0.4 work packages" for WP9–WP14 and the test IDs (D, P, DN, B, CD).
+See `IMPLEMENTATION-PLAN.md` § "v0.4 work packages" for WP9–WP15 and the test IDs (D, P, DN, B, CD, R).
+WP15 is the coding follow-up to A10 (Makefile, `scripts/devdb.sh`, `conftest.py`, related comments). It is not done in this documentation commit.
 
 ## A8. Open decisions for Thomas
 
@@ -607,3 +609,152 @@ See `OPEN-QUESTIONS.md` Q12–Q21. The ones that change behaviour most:
 | S15 | 42 CFR 422.2265 (websites): https://www.ecfr.gov/current/title-42/chapter-IV/subchapter-B/part-422/subpart-V/section-422.2265 ; 422.2267: https://www.ecfr.gov/current/title-42/chapter-IV/subchapter-B/part-422/subpart-V/section-422.2267 | **D** |
 | S16 | Medicare.gov dental: https://www.medicare.gov/coverage/dental-services ; Medigap benefits chart: https://www.medicare.gov/health-drug-plans/medigap/basics/compare-plan-benefits ; Medigap HD deductible 2027: https://www.cms.gov/files/document/cy-2027-medigap-high-deductible-options-fjg.pdf | **V** (search extracts), PDF **D** |
 | S17 | NPPES API v2.1: https://npiregistry.cms.hhs.gov/api-page | **V** (live call; v0.3 S11) |
+
+## A10. Test and dev infrastructure: Redis is app-local
+
+Decided by Thomas on 2026-11-20 (MST, America/Phoenix). The Makefile, compose, script and test changes are **WP15**, owned by the Claude coding worker on ml3090 and reviewed by Philip. **Status: WP15 implemented** in `a3ce1d1` on `fix/drug-search` (2026-11-20; operator guide: `docs/OPERATION.md`); on 2026-11-20 Thomas also ruled that tests use this machine's MySQL only and that `192.168.0.216:3306` is for live data only (A10.3), so the shared-MySQL test mode and R6 are withdrawn (A10.6, A10.9). Nothing in this section changes runtime readiness (`/api/ready`).
+
+### A10.1 Why this is here
+
+A Hermes QA run of the backend pytest suite against a shared MySQL 8.4 at `192.168.0.216:3306` (by setting `MSP_TEST_MYSQL_HOST`) reported 340 passed, 39 failed and 8 errors (`qa/QA-REPORT-3306.md`). Every failure was a Redis connection error, not an application bug. The same suite is green on the repo's own compose stack, which includes Redis. The report recommended running a Redis on `192.168.0.216:6380`; Thomas rejected that in favour of this section (Redis stays app-local).
+
+Redis is ephemeral and belongs with the app (DESIGN §8.5, §10): no-save sessions under `eph:*`, quota counters, and the saved-mode canvas (`sav:*:canvas`). It is started and stopped with the local stack, runs with `--save "" --appendonly no` and `/data` on tmpfs, and is not a durable store. The shared database server provides **MySQL only**. Redis is not required there.
+
+### A10.2 Root cause (code at `f3347bd`, before WP15)
+
+Two commits landed between this analysis and WP15: `7c062c4` (`feat/v0.4`) already added `DEV_REDIS_REMOTE` to `scripts/devdb.sh`, made `stack-up` start the local Redis when only MySQL is remote, and rewrote a local `REDIS_URL` to `redis:6379` for the api container; `570543a` (QA branch) made `conftest.py` read `MSP_TEST_{MIGRATOR,INGEST,API,REDIS}_PASSWORD`, but still used the MySQL host for Redis. WP15 (`a3ce1d1`) finished the rest. The text below describes the code before those commits.
+
+`backend/tests/conftest.py` builds the test Redis URL from the **MySQL** host and a hard-coded dev password:
+
+```python
+MYSQL_HOST = os.environ.get("MSP_TEST_MYSQL_HOST", "127.0.0.1")
+REDIS_PORT = os.environ.get("MSP_REDIS_PORT", "6380")
+REDIS_URL = f"redis://:dev-redis-pw@{MYSQL_HOST}:{REDIS_PORT}/0"
+```
+
+Tests never read a `.env` file (the module docstring states this). Setting `MSP_TEST_MYSQL_HOST=192.168.0.216` therefore also sends Redis traffic to `192.168.0.216:6380`. `MSP_TEST_REDIS_PASSWORD` is not read anywhere in the repo, so even a reachable Redis that used a different password would still fail.
+
+The same coupling exists in host-side make targets, which is why a remote MySQL today also implies a remote Redis:
+
+- `scripts/devdb.sh`: if `REDIS_URL` is unset, `DEV_REDIS_HOST` falls back to `DEV_DB_HOST`. `DEV_DB_REMOTE` is set from the MySQL host alone. When it is set, `stack-up` does **not** start local Redis, `devdb_check_remote` requires `$DEV_REDIS_HOST:$DEV_REDIS_PORT` to answer, and `COMPOSE_REDIS_URL` is exported from the host `REDIS_URL`.
+- `Makefile` `test-backend`: depends on `local-stack-up` (good: this machine's Redis is started), but only forwards `MSP_TEST_MYSQL_HOST`. `conftest.py` then uses that MySQL host for Redis as well.
+- `Makefile` `stack-up` / `app-up`: follow `DEV_DB_REMOTE`. A remote MySQL skips the local redis service. `app-up` already starts `api` and `web` with `--no-deps`, so a local redis service that `stack-up` had started would be usable by the api container at the compose default `redis:6379`.
+- `docker-compose.yml` publishes Redis on `${MSP_DB_BIND:-127.0.0.1}:${MSP_REDIS_PORT:-6380}`. The bind is shared with MySQL. That is not what broke the QA run (the coding host leaves `MSP_DB_BIND` unset, so Redis stays on loopback). No functional compose change is required for the new mode.
+- `docker-compose.prod.yml`: Redis is already unpublished and co-located with the api. Production MySQL may be the compose service or Thomas's existing MySQL (DESIGN §10); Redis stays in this compose file either way. No functional change.
+- `backend/tests/api_support.py` (and the nosave / quota tests) import `REDIS_URL` from `conftest.py`. They need no change once `conftest.py` builds that URL correctly.
+- `/api/ready` already fails loud when Redis is unreachable (`selector/readiness.py`, hint: start Redis with `make stack-up`). That behaviour is **unchanged**.
+
+### A10.3 Rule
+
+Redis settings for tests and host-side make targets are independent of MySQL. A remote MySQL must not imply a remote Redis. When MySQL is remote and `REDIS_URL` is unset or local, `make stack-up` still starts the local redis service, and `make test` and `make app-up` use it. An explicitly remote `REDIS_URL` / `MSP_TEST_REDIS_URL` / `COMPOSE_REDIS_URL` remains an opt-in (the existing "use another machine's full dev stack" path).
+
+**Tests use this machine's MySQL only** (Thomas, 2026-11-20). The suite creates and drops `msp_test_*` databases, so it runs only where the data can be thrown away: the local compose MySQL. `192.168.0.216:3306` holds live data and is reached only by the dev app through the `.env` DB URLs. `conftest.py` refuses a `MSP_TEST_MYSQL_HOST` that is not this machine (`mysql_host_is_local`).
+
+```mermaid
+flowchart TB
+  PY["Host pytest and make test"]
+  APP["api container / make app-up"]
+  R[("Local Redis 7.4<br/>host 127.0.0.1:6380<br/>compose redis:6379<br/>tmpfs, no RDB or AOF")]
+  LM[("Local MySQL 8.4<br/>127.0.0.1:3307<br/>default")]
+  SM[("Live-data MySQL 8.4<br/>192.168.0.216:3306<br/>MySQL only, never tests")]
+  PY -->|always| R
+  APP -->|always| R
+  PY -->|always| LM
+  APP -->|default| LM
+  APP -->|"COMPOSE_DATABASE_URL when MySQL is remote"| SM
+```
+
+### A10.4 Test Redis URL (WP15: `backend/tests/conftest.py`)
+
+Resolve `REDIS_URL` as follows. Do not use `MSP_TEST_MYSQL_HOST` / `MYSQL_HOST`.
+
+1. If `MSP_TEST_REDIS_URL` is set and non-empty, use it as-is (it wins).
+2. Otherwise build `redis://:<password>@<host>:<port>/0` from:
+   - `MSP_TEST_REDIS_HOST`, default `127.0.0.1` (not the MySQL host);
+   - `MSP_REDIS_PORT`, default `6380`;
+   - `MSP_TEST_REDIS_PASSWORD`, default the documented compose dev-only password from `docker-compose.yml`.
+
+A small helper is recommended so WP15 can unit-test the construction without opening a socket. Implemented as `redis_test_url()`; MySQL URLs come from `mysql_test_url(role)`, which reads `MSP_TEST_MIGRATOR_PASSWORD`, `MSP_TEST_INGEST_PASSWORD` and `MSP_TEST_API_PASSWORD` (from `570543a`, default the compose dev passwords). `MSP_TEST_REDIS_PASSWORD` is the password of **this machine's** Redis: do not fill it from a shared server's or production secrets file.
+
+### A10.5 Makefile, `scripts/devdb.sh`, and compose (WP15; describe only)
+
+**`scripts/devdb.sh`**
+
+- Keep `DEV_DB_HOST` / `DEV_DB_REMOTE` for MySQL, decided as today from `MSP_DB_HOST` or `INGEST_DATABASE_URL` / `DATABASE_URL`.
+- Decide Redis separately from `REDIS_URL` (and `MSP_REDIS_PORT`). If `REDIS_URL` is unset or its host is local (same `_devdb_is_local` rules as MySQL), `DEV_REDIS_HOST` defaults to `127.0.0.1`, **not** `DEV_DB_HOST`. Introduce `DEV_REDIS_REMOTE` (set only when the Redis host is explicitly not this machine).
+- When MySQL is remote and Redis is local: do **not** export the host `REDIS_URL` as `COMPOSE_REDIS_URL`. With `REDIS_URL` unset, leave the compose default `redis://:<dev-password>@redis:6379/0`; with a local `REDIS_URL`, export it rewritten to `redis:6379` with the same password and DB (as `7c062c4` does), so a non-default local password still works. Either way the api container uses the local redis service. Still export `COMPOSE_DATABASE_URL` / `COMPOSE_INGEST_DATABASE_URL` / `COMPOSE_MIGRATOR_DATABASE_URL` as today. `COMPOSE_REDIS_URL` already set in the environment still wins.
+- When Redis is explicitly remote: keep today's behaviour (`COMPOSE_REDIS_URL` from `REDIS_URL` unless already set).
+- `devdb_check_remote`: check MySQL when `DEV_DB_REMOTE` is set; check Redis only when `DEV_REDIS_REMOTE` is set. Do not require Redis on the MySQL server. Update the error text so it no longer tells the operator to publish Redis on the DB host or to point all four URLs at that host.
+
+**`Makefile`**
+
+- `stack-up`: if MySQL is remote, still check that it answers; if Redis is local or unset, start the local redis service (`docker compose up -d --wait --no-recreate redis`) and do not start a local MySQL. If both are local, keep `local-stack-up` (mysql + redis). If Redis is explicitly remote, do not start local Redis; only check that the remote Redis answers.
+- `test-backend`: keep depending on `local-stack-up` so the default `make test` is unchanged (local MySQL + local Redis). When forwarding addresses, set `MSP_TEST_MYSQL_HOST` as today (`MSP_TEST_MYSQL_HOST` if already set, else `MSP_DB_BIND` when that is a single LAN address, else `127.0.0.1`). Independently, if `MSP_TEST_REDIS_URL` and `MSP_TEST_REDIS_HOST` are unset, set `MSP_TEST_REDIS_HOST` from the same local bind fallback (`MSP_DB_BIND` or `127.0.0.1`). That preserves today's `make test` on a machine that publishes the stack on one LAN address (compose binds Redis with `MSP_DB_BIND`, so `127.0.0.1:6380` would not answer). It must not copy the MySQL host when the operator has set `MSP_TEST_MYSQL_HOST` to a shared server.
+- `DEV_DB` default `REDIS_URL` stays `127.0.0.1:6380` (already correct). Update `HOST_URL_HINT` and the `stack-up` / `app-up` comments: a remote MySQL does not require a remote Redis; Redis URLs stay local unless intentionally pointed elsewhere.
+- `app-up`: when MySQL is remote, say that the api container uses the remote MySQL and the local Redis (unless Redis is explicitly remote).
+
+**`docker-compose.yml`**
+
+- No functional change required for the supported mode. Update the header and Redis comments: Redis is app-local; `MSP_DB_BIND` publishing Redis is only for sharing this machine's full dev stack; a coding host that uses a shared MySQL leaves `MSP_DB_BIND` unset so Redis stays on `127.0.0.1`.
+
+**`docker-compose.prod.yml`**
+
+- No functional change. A comment may note that Redis stays in this file even when production MySQL is Thomas's existing server.
+
+**`.env.example`, `README.md` and `docs/OPERATION.md`** (WP15)
+
+- Stop telling operators to put Redis in the four remote URLs next to MySQL. The independent Redis variables and the shared-MySQL + local-Redis examples live in `docs/OPERATION.md`; README only corrects its old text and links there (README carries no detailed configuration).
+- `make test` uses this machine's MySQL and Redis only (A10.3).
+
+**`backend/tests/unit/test_dev_tooling.py`**
+
+- Keep `test_devdb_remote_stack_from_env_urls` (explicit remote `REDIS_URL` still means remote Redis).
+- Add a case: remote MySQL URLs (or `MSP_DB_HOST`) with `REDIS_URL` unset or local → Redis is local, `COMPOSE_REDIS_URL` is not forced to the MySQL host, `DEV_DB_REMOTE=1`.
+- If `stack-up`'s recipe splits mysql/redis, update `test_app_up_never_recreates_the_tmpfs_stack` so it still requires `--no-recreate` and that `test-backend` depends on `local-stack-up`.
+
+### A10.6 Test and dev-app layouts
+
+**Withdrawn 2026-11-20:** the earlier "shared MySQL + local Redis" *test* mode (pytest with `MSP_TEST_MYSQL_HOST=192.168.0.216`). Thomas: `192.168.0.216` is for live data only; tests use the local MySQL, whose databases can be thrown away.
+
+Tests: `make test` with no `MSP_TEST_*` variables. `test-backend` runs `local-stack-up` and pytest against `127.0.0.1:3307` and `127.0.0.1:6380` (or this machine's `MSP_DB_BIND` address). Redis can still be overridden on its own (`MSP_TEST_REDIS_URL`, or `MSP_TEST_REDIS_HOST` / `MSP_REDIS_PORT` / `MSP_TEST_REDIS_PASSWORD`), never through the MySQL host.
+
+Dev app against the live-data MySQL + local Redis (`.env` on the coding host; placeholder passwords):
+
+```bash
+DATABASE_URL=mysql+pymysql://msp_dev_api:<password>@192.168.0.216:3306/msp?charset=utf8mb4
+INGEST_DATABASE_URL=mysql+pymysql://msp_dev_ingest:<password>@192.168.0.216:3306/msp?charset=utf8mb4
+MIGRATOR_DATABASE_URL=mysql+pymysql://msp_dev_migrator:<password>@192.168.0.216:3306/msp?charset=utf8mb4
+# Redis stays on this machine; leave REDIS_URL local or omit it
+REDIS_URL=redis://:<redis-password>@127.0.0.1:6380/0
+```
+
+Then `make stack-up` starts only local Redis (and checks the remote MySQL), and `make app-up` gives the api container the remote `COMPOSE_DATABASE_URL` (and ingest/migrator) values and the local Redis (`redis:6379`). `make ingest-dev` must not be run against the live data (it replaces the plan year with the sample fixtures). Operator steps: `docs/OPERATION.md`.
+
+### A10.7 Env-var reference
+
+| Variable | Used by | Default | Notes |
+|---|---|---|---|
+| `MSP_TEST_REDIS_URL` | pytest (`conftest.py`) | unset | Wins when set. Independent of MySQL. |
+| `MSP_TEST_REDIS_HOST` | pytest, when the URL is unset | `127.0.0.1` | Not the MySQL host. `make test-backend` may set this to `MSP_DB_BIND` when the operator has not set a Redis host, so a stack published on one LAN address still answers. |
+| `MSP_TEST_REDIS_PASSWORD` | pytest, when the URL is unset | compose dev-only password | The local Redis password (read since `570543a`). Never a shared-server or production secret. |
+| `MSP_TEST_MIGRATOR_PASSWORD`, `MSP_TEST_INGEST_PASSWORD`, `MSP_TEST_API_PASSWORD` | pytest | compose dev-only passwords | Passwords of `msp_migrator`, `msp_ingest`, `msp_api` on the local test MySQL, only if they differ from the compose defaults. |
+| `MSP_REDIS_PORT` | pytest, compose publish, `devdb.sh` | `6380` | Host publish port (container port stays 6379). |
+| `MSP_TEST_MYSQL_HOST` | pytest | `127.0.0.1` | Must be this machine (loopback, its name or own address); anything else stops pytest. Never changes the Redis host. |
+| `MSP_MYSQL_PORT` | pytest, compose publish, `devdb.sh` | `3307` | Local compose publish port. |
+| `REDIS_URL` | host-side make / `.env` / the running app | `redis://:<dev-password>@127.0.0.1:6380/0` | Tests do not read `.env`. Unset or local ⇒ local Redis, even when MySQL is remote. |
+| `COMPOSE_REDIS_URL` | api container | `redis://:<dev-password>@redis:6379/0` | Do not copy a remote MySQL host into this. An explicit value still wins. |
+| `COMPOSE_DATABASE_URL` (and ingest/migrator) | api container | compose service `mysql:3306` | Set to the live-data MySQL URL when MySQL is remote (dev app only). |
+| `MSP_DB_HOST` / `MSP_DB_BIND` | `devdb.sh`, compose bind, `make test-backend` bind fallback | unset / `127.0.0.1` | Decide and publish **MySQL**. They do not, by themselves, locate Redis. |
+
+### A10.8 Acceptance (WP15)
+
+- Default `make test` (no `MSP_TEST_*`) is unchanged and still green against the local stack.
+- With `MSP_TEST_MYSQL_HOST` set to a remote MySQL, Redis stays local and pytest refuses to start (no test database is created on that server).
+- `/api/ready` and the existing readiness tests are unchanged.
+- ~~R6: the full suite green against `192.168.0.216:3306`~~ withdrawn 2026-11-20 (A10.3).
+
+Result 2026-11-20: default `make test` green (`a3ce1d1`: 393 backend, 43 Vitest); R1–R5 green; the guard refuses `MSP_TEST_MYSQL_HOST=192.168.0.216`. Before the guard and the ruling, one run from ml3090 against `192.168.0.216:3306` had 0 Redis errors and failed every MySQL login (`Access denied for 'msp_migrator'`), so it wrote nothing; a `msp_test_probe` database created there while checking grants was dropped, and the server was checked afterwards (`msp` only, still at `0006`).
+
+### A10.9 Shared-server test accounts (withdrawn)
+
+Withdrawn 2026-11-20: tests never run against `192.168.0.216`, so no test accounts are needed there.

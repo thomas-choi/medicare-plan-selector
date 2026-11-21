@@ -50,6 +50,7 @@ services:
 
   redis:
     image: redis:7.4
+    # App-local (DESIGN-v0.4-ADDENDUM A10): Redis stays in this file even when MySQL is Thomas's existing server.
     # No persistence (DESIGN §8.5): no RDB, no AOF, /data on tmpfs, no core dumps.
     command:
       - sh

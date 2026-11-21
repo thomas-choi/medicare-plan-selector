@@ -58,7 +58,8 @@ def test_app_up_never_recreates_the_tmpfs_stack() -> None:
     assert "--no-deps" in up and up.split("--no-deps", 1)[1].split("||")[0].split() == ["api", "web"]
     assert "make ingest-dev" in "\n".join(body)
     _, stack = _recipe("stack-up")
-    assert "local-stack-up" in stack[0]
+    assert "local-stack-up" in "\n".join(stack)
+    assert all("--no-recreate" in line for line in stack if " up " in line)
     _, local = _recipe("local-stack-up")
     assert "--no-recreate" in local[0]
     prereqs, _ = _recipe("test-backend")
@@ -74,7 +75,8 @@ def _devdb(env: dict[str, str]) -> dict[str, str]:
         [  # noqa: S607
             "bash",
             "-c",
-            f'. "{DEVDB}"; for v in DEV_DB_HOST DEV_DB_PORT DEV_REDIS_HOST DEV_REDIS_PORT DEV_DB_REMOTE; do '
+            f'. "{DEVDB}"; for v in DEV_DB_HOST DEV_DB_PORT DEV_REDIS_HOST DEV_REDIS_PORT DEV_DB_REMOTE '
+            "DEV_REDIS_REMOTE; do "
             'printf "%s=%s\\n" "$v" "${!v}"; done; env | grep -E "^COMPOSE_" || true',
         ],
         env={"PATH": os.environ["PATH"], **env},
@@ -109,6 +111,42 @@ def test_devdb_remote_stack_from_env_urls() -> None:
     assert (got["DEV_REDIS_HOST"], got["DEV_REDIS_PORT"]) == ("192.0.2.16", "6380")
     assert got["COMPOSE_DATABASE_URL"] == db  # the api container uses the same remote stack
     assert got["COMPOSE_REDIS_URL"] == "redis://:pw@192.0.2.16:6380/0"
+
+
+def test_devdb_remote_mysql_with_local_redis() -> None:
+    """Live data on another machine's MySQL, sessions in this machine's Redis: the api container must reach that
+    Redis by its compose service name, not 127.0.0.1 (which inside the container is the container itself)."""
+    db = "mysql+pymysql://msp_dev_api:pw@192.0.2.16:3306/msp?charset=utf8mb4"
+    got = _devdb({"DATABASE_URL": db, "INGEST_DATABASE_URL": db, "REDIS_URL": "redis://:rpw@127.0.0.1:6380/0"})
+    assert got["DEV_DB_REMOTE"] == "1" and got["DEV_REDIS_REMOTE"] == ""
+    assert (got["DEV_DB_HOST"], got["DEV_DB_PORT"]) == ("192.0.2.16", "3306")
+    assert (got["DEV_REDIS_HOST"], got["DEV_REDIS_PORT"]) == ("127.0.0.1", "6380")
+    assert got["COMPOSE_DATABASE_URL"] == db
+    assert got["COMPOSE_REDIS_URL"] == "redis://:rpw@redis:6379/0"
+
+
+def test_devdb_remote_mysql_without_redis_url_keeps_redis_local() -> None:
+    """R2 (A10.5): a remote MySQL (URLs or MSP_DB_HOST) with REDIS_URL unset must not move Redis to the MySQL host."""
+    db = "mysql+pymysql://msp_api:pw@192.0.2.16:3306/msp"
+    for env in ({"DATABASE_URL": db, "INGEST_DATABASE_URL": db}, {"MSP_DB_HOST": "192.0.2.16"}):
+        got = _devdb(env)
+        assert got["DEV_DB_REMOTE"] == "1" and got["DEV_REDIS_REMOTE"] == ""
+        assert (got["DEV_REDIS_HOST"], got["DEV_REDIS_PORT"]) == ("127.0.0.1", "6380")
+        assert "COMPOSE_REDIS_URL" not in got  # the compose default redis:6379 is this machine's Redis
+
+
+def test_test_backend_sets_redis_apart_from_mysql() -> None:
+    """R1/R4 (A10.5): `make test-backend` gives pytest a Redis host of its own, never MSP_TEST_MYSQL_HOST."""
+    _, body = _recipe("test-backend")
+    recipe = "\n".join(body)
+    assert "MSP_TEST_REDIS_HOST" in recipe and "MSP_TEST_REDIS_URL" in recipe
+    assert not re.search(r"MSP_TEST_REDIS_HOST=[^;]*MSP_TEST_MYSQL_HOST", recipe)
+
+
+def test_stack_up_starts_local_redis_when_only_mysql_is_remote() -> None:
+    _, body = _recipe("stack-up")
+    recipe = "\n".join(body)
+    assert "DEV_REDIS_REMOTE" in recipe and "--no-recreate redis" in recipe
 
 
 def test_devdb_explicit_compose_urls_win() -> None:

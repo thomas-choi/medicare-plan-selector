@@ -11,22 +11,28 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import Engine, select
 
 from selector import models as m
 from selector.agent.providers.base import ToolCall, ToolSpec
+from selector.benefits.dental import NO_ROUTINE, NOT_LISTED, no_dental_row
 from selector.config import Settings
 from selector.cost import repo
-from selector.cost.engine import PlanEstimate, approximation_notes, compare
+from selector.cost.baseline import Baseline, compare_with_baseline
+from selector.cost.engine import PlanEstimate, PlanInfo, approximation_notes
+from selector.cost.params import CostParams
+from selector.directories import plan_directories
 from selector.geo.hud import HudClient
 from selector.geo.resolve import resolve_zip
 from selector.lookups import LookupError_, NppesClient, RxNavClient
-from selector.profile import MustHavesIn, Profile, WeightsIn
+from selector.network import CHECK_NOTE, DirectoryChecker, DoctorRef, Listing, PlanDirectory
+from selector.profile import MedigapIn, MustHavesIn, Profile, WeightsIn
 
 MAX_COMPARE = 5
 CHECKLIST = [
@@ -65,6 +71,7 @@ class FilterPlansArgs(ToolArgs):
     must_haves: MustHavesIn | None = None
     weights: WeightsIn | None = None
     utilization: Literal["low", "medium", "high"] | None = None
+    medigap: MedigapIn | None = Field(default=None, description="Medigap assumption for the baseline row only")
 
 
 class EstimateCostsArgs(ToolArgs):
@@ -77,6 +84,30 @@ class ComparePlansArgs(ToolArgs):
 
 class ExplainPlanArgs(ToolArgs):
     plan_key: str = Field(pattern=r"^[HRSE]\d{4}_\d{3}_\d{1,3}$")
+
+
+class CheckProviderNetworkArgs(ToolArgs):
+    npis: list[str] = Field(min_length=1, max_length=15, description="10-digit NPIs from lookup_provider")
+    plan_keys: list[str] = Field(min_length=1, max_length=60, description="plan IDs in the county, or BASELINE")
+
+    @field_validator("npis")
+    @classmethod
+    def _npis(cls, v: list[str]) -> list[str]:
+        if any(not re.fullmatch(r"\d{10}", n) for n in v):
+            raise ValueError("an NPI has 10 digits")
+        return v
+
+    @field_validator("plan_keys")
+    @classmethod
+    def _keys(cls, v: list[str]) -> list[str]:
+        if any(k != "BASELINE" and not re.fullmatch(r"[HRSE]\d{4}_\d{3}_\d{1,3}", k) for k in v):
+            raise ValueError("unknown plan id format")
+        return v
+
+
+class GetPlanBenefitsArgs(ToolArgs):
+    plan_key: str = Field(pattern=r"^[HRSE]\d{4}_\d{3}_\d{1,3}$")
+    category: Literal["dental"] = "dental"
 
 
 class UpdateCanvasArgs(ToolArgs):
@@ -101,6 +132,7 @@ class ToolContext:
     hud: HudClient | None = None
     rxnav: RxNavClient | None = None
     nppes: NppesClient | None = None
+    directory: DirectoryChecker | None = None
     feedback_hook: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None
     _vintage: str | None = None
 
@@ -136,7 +168,39 @@ def _need_county(ctx: ToolContext) -> str:
     return ctx.profile.county_ssa
 
 
-def run_compare(ctx: ToolContext) -> list[PlanEstimate]:
+def doctor_refs(profile: Profile) -> list[DoctorRef]:
+    return [DoctorRef(p.name, p.npi, p.must_keep) for p in profile.providers]
+
+
+def doctor_statuses(
+    ctx: ToolContext, plans: list[PlanInfo], doctors: list[DoctorRef], *, baseline: bool = True
+) -> dict[str, list[dict[str, Any]]]:
+    """Listing status of each doctor for each plan (+ BASELINE): directories for MA plans, the CMS opt-out list
+    for Original Medicare rows (addendum A3). Sends only NPIs out; nothing is stored."""
+    if not doctors:
+        return {}
+    keys = [p.plan_key for p in plans] + (["BASELINE"] if baseline else [])
+    found: dict[str, dict[str, Listing]] = {}
+    if ctx.directory is not None and any(d.npi for d in doctors):
+        with ctx.engine.connect() as c:
+            pdirs, endpoints = plan_directories(c, ctx.plan_year, plans)
+        if baseline:
+            pdirs.append(PlanDirectory("BASELINE", "BASELINE", None))
+        found = ctx.directory.check(doctors, pdirs, endpoints)
+    out: dict[str, list[dict[str, Any]]] = {}
+    for k in keys:
+        rows = []
+        for d in doctors:
+            if not d.npi:
+                rows.append(Listing("no_npi", None).as_dict(d))
+            else:
+                rows.append(found.get(k, {}).get(d.npi, Listing("unavailable", None)).as_dict(d))
+        out[k] = rows
+    return out
+
+
+def run_compare_full(ctx: ToolContext) -> tuple[list[PlanEstimate], Baseline, CostParams]:
+    """Rank every plan in the county and build the pinned Original Medicare + Part D baseline (addendum A5)."""
     ssa = _need_county(ctx)
     prof = ctx.profile.to_cost_profile()
     with ctx.engine.connect() as c:
@@ -144,13 +208,21 @@ def run_compare(ctx: ToolContext) -> list[PlanEstimate]:
         plans = repo.plans_in_county(c, ctx.plan_year, ssa)
         rx = repo.load_plan_rx(c, ctx.plan_year, plans, list(prof.drugs))
         med = repo.load_plan_medical(c, ctx.plan_year, plans)
-    return compare(plans, rx, med, prof, params)
+        dental = repo.load_plan_dental(c, ctx.plan_year, plans)
+    doctors = doctor_statuses(ctx, plans, doctor_refs(ctx.profile))
+    ests, baseline = compare_with_baseline(plans, rx, med, prof, params, dental, doctors)
+    return ests, baseline, params
+
+
+def run_compare(ctx: ToolContext) -> list[PlanEstimate]:
+    return run_compare_full(ctx)[0]
 
 
 def _short(e: dict[str, Any]) -> dict[str, Any]:
     keep = ("plan_key", "plan_name", "organization", "plan_type", "category", "rank", "star_overall",
             "monthly_premium_cents", "total_est_cents", "total_low_cents", "total_high_cents", "worst_case_cents",
-            "drug_low_cents", "drug_high_cents", "drugs_covered", "drugs_total", "dropped_reason")  # fmt: skip
+            "drug_low_cents", "drug_high_cents", "drugs_covered", "drugs_total", "dropped_reason",
+            "delta_vs_baseline_cents")  # fmt: skip
     return {k: e[k] for k in keep}
 
 
@@ -190,7 +262,8 @@ def _t_lookup_provider(ctx: ToolContext, a: LookupProviderArgs) -> dict[str, Any
     return {
         "candidates": [c.__dict__ for c in cands],
         "network_status": "unknown",
-        "note": "CMS public files don't include provider networks. Call each plan to confirm this doctor.",
+        "note": "To see whether plans list this doctor, call check_provider_network with the NPI. Listings can be "
+        "out of date: the user must call the plan to confirm.",
         "src_ref": [{"source": "S11", "vintage": "NPPES live", "row": "npi_search"}],
     }
 
@@ -233,6 +306,8 @@ def _t_filter_plans(ctx: ToolContext, a: FilterPlansArgs) -> dict[str, Any]:
         upd["weights"] = a.weights
     if a.utilization:
         upd["utilization"] = a.utilization
+    if a.medigap is not None:
+        upd["medigap"] = a.medigap
     ctx.profile = ctx.profile.model_copy(update=upd)
     ctx.canvas["profile_changed"] = True
     ests = run_compare(ctx)
@@ -253,21 +328,29 @@ def _t_estimate_costs(ctx: ToolContext, a: EstimateCostsArgs) -> dict[str, Any]:
     return {"estimates": rows, "src_ref": [r for e in rows for r in e["src_ref"]]}
 
 
+def _baseline_short(b: dict[str, Any]) -> dict[str, Any]:
+    keep = ("plan_key", "plan_name", "organization", "plan_type", "pdp_plan_key", "pdp_plan_name",
+            "monthly_premium_cents", "part_b_annual_cents", "part_b_deductible_cents", "part_a_deductible_cents",
+            "total_est_cents", "total_low_cents", "total_high_cents", "worst_case_cents", "drug_low_cents",
+            "drug_high_cents", "drugs_covered", "drugs_total", "components", "medigap", "notes")  # fmt: skip
+    return {k: b[k] for k in keep}
+
+
 def _t_compare_plans(ctx: ToolContext, a: ComparePlansArgs) -> dict[str, Any]:
-    ests = run_compare(ctx)
-    with ctx.engine.connect() as c:
-        params = repo.load_params(c, ctx.plan_year, ctx.settings)
+    ests, baseline, params = run_compare_full(ctx)
     rows = [e.as_dict() for e in ests]
+    base = baseline.as_dict()
     top = [r for r in rows if r["rank"]][: a.limit]
-    ctx.canvas.update({"tab": "table", "rows": rows, "top": [r["plan_key"] for r in top],
+    ctx.canvas.update({"tab": "table", "rows": rows, "baseline": base, "top": [r["plan_key"] for r in top],
                        "notes": approximation_notes(params)})  # fmt: skip
     return {
+        "baseline": _baseline_short(base),
         "top": [_short(r) for r in top],
         "ranked_count": sum(1 for r in rows if r["rank"]),
         "dropped": [{"plan_key": r["plan_key"], "reason": r["dropped_reason"]} for r in rows if not r["rank"]],
         "checklist": CHECKLIST,
         "approximation_notes": approximation_notes(params),
-        "src_ref": [ref for r in top for ref in r["src_ref"]],
+        "src_ref": [*base["src_ref"], *(ref for r in top for ref in r["src_ref"])],
     }
 
 
@@ -296,6 +379,61 @@ def _t_explain_plan(ctx: ToolContext, a: ExplainPlanArgs) -> dict[str, Any]:
     d = e.as_dict()
     d["moop_cents"] = e.plan.moop_in_network_cents
     return {"plan": d, "benefits": ben, "src_ref": [*d["src_ref"], *[b["src_ref"] for b in ben]]}
+
+
+def plan_benefits(ctx: ToolContext, plan_key: str, category: str = "dental") -> dict[str, Any]:
+    """The `plan_dental` row with its src_ref (addendum A4.4). Raises ToolFailure for an unknown plan."""
+    with ctx.engine.connect() as c:
+        plans = repo.plans_by_key(c, ctx.plan_year, [plan_key])
+        if not plans:
+            raise ToolFailure("unknown_plan", "That plan isn't in the plan data.")
+        d = repo.plan_dental_one(c, ctx.plan_year, plan_key)
+    p = plans[0]
+    if d is not None:
+        dental = d.as_detail()
+    else:
+        dental = {**no_dental_row(NO_ROUTINE if p.category == "PDP" else NOT_LISTED), "services": []}
+    return {
+        "plan_key": plan_key,
+        "plan_name": p.plan_name,
+        "plan_year": ctx.plan_year,
+        "category": category,
+        "dental": dental,
+        "note": "Dental costs are not included in the yearly estimate. Confirm details with the plan.",
+        "src_ref": [r for r in (dental.get("src_ref"), p.src_ref) if r],
+    }
+
+
+def provider_network(ctx: ToolContext, npis: list[str], plan_keys: list[str]) -> dict[str, Any]:
+    """Listing status of NPIs for plans in the user's county (and BASELINE). Raises ToolFailure."""
+    ssa = _need_county(ctx)
+    if ctx.directory is None:
+        raise ToolFailure("lookup_unavailable", "Doctor directory checks are off. Call each plan to confirm.")
+    with ctx.engine.connect() as c:
+        county = {p.plan_key: p for p in repo.plans_in_county(c, ctx.plan_year, ssa)}
+    unknown = [k for k in plan_keys if k != "BASELINE" and k not in county]
+    if unknown:
+        raise ToolFailure("unknown_plan", f"These plans aren't offered in your county: {', '.join(unknown)}.")
+    names = {p.npi: p.name for p in ctx.profile.providers if p.npi}
+    keep = {p.npi for p in ctx.profile.providers if p.npi and p.must_keep}
+    docs = [DoctorRef(names.get(n, f"NPI {n}"), n, n in keep) for n in dict.fromkeys(npis)]
+    plans = [county[k] for k in dict.fromkeys(plan_keys) if k in county]
+    rows = doctor_statuses(ctx, plans, docs, baseline="BASELINE" in plan_keys)
+    results = {k: {d["npi"]: d for d in v} for k, v in rows.items() if k in plan_keys}
+    return {
+        "checked_at": ctx.directory.today().isoformat(),
+        "results": results,
+        "note": CHECK_NOTE,
+        "src_ref": [d["source"] for v in rows.values() for d in v if d.get("source")][:20],
+    }
+
+
+def _t_check_provider_network(ctx: ToolContext, a: CheckProviderNetworkArgs) -> dict[str, Any]:
+    return provider_network(ctx, a.npis, a.plan_keys)
+
+
+def _t_get_plan_benefits(ctx: ToolContext, a: GetPlanBenefitsArgs) -> dict[str, Any]:
+    return plan_benefits(ctx, a.plan_key, a.category)
 
 
 def _t_update_canvas(ctx: ToolContext, a: UpdateCanvasArgs) -> dict[str, Any]:
@@ -331,18 +469,27 @@ TOOLS: dict[str, Tool] = {
         Tool("resolve_location", "Map a ZIP code to its county or counties (HUD crosswalk).", ResolveLocationArgs,
              _t_resolve_location),
         Tool("resolve_drug", "Find RxNorm drug candidates for a drug name.", ResolveDrugArgs, _t_resolve_drug),
-        Tool("lookup_provider", "Find a doctor's NPI. Network status is never known: tell the user to call the plan.",
+        Tool("lookup_provider", "Find a doctor's NPI (NPPES). Use check_provider_network for directory listings.",
              LookupProviderArgs, _t_lookup_provider),
+        Tool("check_provider_network", "Whether plans' public provider directories list these doctors (by NPI): "
+             "listed / not_listed / unknown / unavailable, with the check date. A listing is not a guarantee: "
+             "always tell the user to call the plan to confirm.", CheckProviderNetworkArgs,
+             _t_check_provider_network),
         Tool("search_plans", "List every plan offered in the user's county with basic facts.", SearchPlansArgs,
              _t_search_plans),
-        Tool("filter_plans", "Change the user's path, must-haves, weights or utilization and re-rank.",
+        Tool("filter_plans", "Change the user's path, must-haves, weights, utilization or the baseline's Medigap "
+             "assumption and re-rank.",
              FilterPlansArgs, _t_filter_plans),
         Tool("estimate_costs", "Estimated yearly costs for up to 5 plans in the user's county.", EstimateCostsArgs,
              _t_estimate_costs),
-        Tool("compare_plans", "Rank all plans in the user's county and return the top N (max 5) with the checklist.",
+        Tool("compare_plans", "Rank all plans in the user's county and return the top N (max 5) with the checklist, "
+             "plus the pinned 'Original Medicare + Part D (standard)' baseline (unranked; compare plans against it).",
              ComparePlansArgs, _t_compare_plans),
         Tool("explain_plan", "Details for one plan: costs, benefits, drug coverage.", ExplainPlanArgs,
              _t_explain_plan),
+        Tool("get_plan_benefits", "Dental benefits of one plan from the CMS plan benefit file: preventive and "
+             "comprehensive cost sharing, yearly maximum and limits. Not included in cost estimates.",
+             GetPlanBenefitsArgs, _t_get_plan_benefits),
         Tool("update_canvas", "Switch the comparison canvas tab or the selected plans.", UpdateCanvasArgs,
              _t_update_canvas),
         Tool("record_feedback", "Record a thumbs up/down the user gave a recommended plan.", RecordFeedbackArgs,
