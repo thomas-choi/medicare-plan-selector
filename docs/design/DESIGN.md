@@ -609,7 +609,7 @@ The trade-off is visible in the UI: *"No-save: nothing is kept on our servers af
 - **Releases:** the image is tagged by git SHA and recorded in `feedback.app_version`.
 - **Deploy approval:** a deploy or push happens only with Thomas's explicit approval, as in his standing workflow.
 
-**Dev and test data stores:** default `make test` uses this machine's compose MySQL (`127.0.0.1:3307`) and Redis (`127.0.0.1:6380`). Tests and host-side make targets take Redis settings independently of MySQL (`MSP_TEST_REDIS_URL`, or `MSP_TEST_REDIS_HOST` defaulting to `127.0.0.1`). A supported mode is shared MySQL (`MSP_TEST_MYSQL_HOST`) plus local Redis. `/api/ready` is unchanged: the process is not ready unless both Redis and the plan data answer. See addendum A10 and WP15.
+**Dev and test data stores:** default `make test` uses this machine's compose MySQL (`127.0.0.1:3307`) and Redis (`127.0.0.1:6380`). Tests and host-side make targets take Redis settings independently of MySQL (`MSP_TEST_REDIS_URL`, or `MSP_TEST_REDIS_HOST` defaulting to `127.0.0.1`). A supported mode is shared MySQL (`MSP_TEST_MYSQL_HOST`) plus local Redis. `/api/ready` is unchanged: the process is not ready unless both Redis and the plan data answer. See addendum A10 and WP15; operator steps and variables: `docs/OPERATION.md`.
 
 ---
 

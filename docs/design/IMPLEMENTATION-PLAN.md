@@ -148,11 +148,12 @@ Each package is PR-sized, with tests first. A `docs/CHANGELOG.md` entry is requi
 
 ## v0.4 work packages (Thomas's test comments 2026-11-19; design in `DESIGN-v0.4-ADDENDUM.md`)
 
-Status: WP9 implemented on local branch `fix/drug-search` (`19111e0`); **WP10–WP13 implemented on local branch
-`feat/v0.4`** (2026-11-19, not pushed; see `docs/CHANGELOG.md`). WP14 not started. Same rules as above: cumulative tests, the worker never pushes, merges, tags or deploys.
+Status (2026-11-20): WP9–WP13 and WP15 implemented; `fix/drug-search` holds all of them (WP10–WP13 came from
+`feat/v0.4`, merged with the QA branch `qa/v0.4-3306-regression`), and `feat/v0.4` is fast-forwarded to it. WP15 R6
+is open on shared-server test accounts (addendum A10.9). WP14 not started. See `docs/CHANGELOG.md`. Same rules as
+above: cumulative tests, the worker never pushes, merges, tags or deploys.
 
-Suggested order before Thomas enrolls (Nov 24): **WP9 → WP15 → WP10 → WP11 → WP12**, then WP13; WP14 after enrollment.
-WP15 is independent of WP10–WP14 and unblocks QA against a shared MySQL.
+Remaining order before Thomas enrolls (Nov 24): WP15 R6 (after the A10.9 accounts exist), then WP14 after enrollment.
 
 | WP | Scope | Size | Depends on |
 |---|---|---|---|
@@ -162,7 +163,7 @@ WP15 is independent of WP10–WP14 and unblocks QA against a shared MySQL.
 | **WP12** (done, local) | Dental: parser `ingest/parsers/pbp_dental.py` for `pbp_b16_dental.txt`, `plan_dental` table (Alembic `0005`), fixture sample, validation (golden H0028_028_0 = $500/yr shared); `GET /api/plans/{plan_key}/benefits`; tool `get_plan_benefits`; Dental column, side-by-side section, must-haves; optional dental-use preset behind a flag | M | – |
 | **WP13** (done, local) | Doctors: intake NPI pick via `GET /api/providers` with `must_keep`; `network.py` `DirectoryChecker` (Plan-Net FHIR), `sources/directories.yaml` seed (UHC, Humana first), `selector directories sync`, `insurance_plan_map` (Alembic `0006`); CMS opt-out check for the baseline; `POST /api/providers/network`; tool `check_provider_network`; policy/validator change (listing status only); badges + optional filter/weight | L | WP11 (baseline badge) |
 | **WP14** (optional) | Carrier documents: `selector docs fetch` (robots check, 1 req/5 s/host, PDF only, ≤15 MB, sha256, H-number check), `plan_document` table, links in side-by-side; no value extraction | M | – |
-| **WP15** | Test/dev Redis is app-local (addendum A10). Decouple Redis from the MySQL host in `backend/tests/conftest.py`, `scripts/devdb.sh` and the Makefile; document `.env.example` and `README.md`. `docker-compose.yml` / `docker-compose.prod.yml`: comments only (no functional change required). Readiness (`/api/ready`) is unchanged. Owner: Claude coding worker on ml3090; review: Philip. No push, merge or deploy without Thomas's approval | S | – |
+| **WP15** (done, local `a3ce1d1`; R6 open) | Test/dev Redis is app-local (addendum A10). Decouple Redis from the MySQL host in `backend/tests/conftest.py`, `scripts/devdb.sh` and the Makefile (part already in `7c062c4`); document in `.env.example` and `docs/OPERATION.md`, correct `README.md`. `docker-compose.yml` / `docker-compose.prod.yml`: comments only (no functional change required). Readiness (`/api/ready`) is unchanged. Owner: Claude coding worker on ml3090; review: Philip. No push, merge or deploy without Thomas's approval | S | – |
 
 ### v0.4 tests (added to the cumulative suite)
 
@@ -198,4 +199,4 @@ WP15 is independent of WP10–WP14 and unblocks QA against a shared MySQL.
 | R3 | WP15 | `devdb.sh`: explicit remote `REDIS_URL` still means remote Redis (existing `test_devdb_remote_stack_from_env_urls` still passes) |
 | R4 | WP15 | `make test` with no `MSP_TEST_*` still uses `local-stack-up` and the local ports; `test_app_up_never_recreates_the_tmpfs_stack` still holds (`--no-recreate`, `test-backend` depends on `local-stack-up`) |
 | R5 | WP15 | Existing readiness tests unchanged (`/api/ready` still requires Redis and plan data) |
-| R6 | WP15 | Full backend suite green with `MSP_TEST_MYSQL_HOST=192.168.0.216` (and `MSP_MYSQL_PORT=3306` if that server listens on 3306) plus local Redis |
+| R6 | WP15 | Full backend suite green with `MSP_TEST_MYSQL_HOST=192.168.0.216` (and `MSP_MYSQL_PORT=3306` if that server listens on 3306) plus local Redis. **Open:** 2026-11-20 run had 0 Redis errors but 89 MySQL access-denied errors (accounts, addendum A10.9) |

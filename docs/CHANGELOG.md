@@ -271,3 +271,22 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
   - Result: `make test` green, 393 backend + 43 Vitest. R6 against `192.168.0.216:3306` with local Redis: 304 passed,
     89 errors, **0 Redis errors**; every error is `Access denied for 'msp_migrator'@'192.168.0.212'` (accounts on the
     shared server, see `qa/QA-REPORT-3306.md`).
+
+## Docs — A10 / plan / QA report aligned with the code after WP15
+- **When:** 2026-11-20 20:50 MST
+- **Who:** Claude (Claude Opus 5.5, coding worker)
+- **Reference:** Thomas's 2026-11-20 review request (verify `QA-REPORT-3306.md` and `DESIGN-v0.4-ADDENDUM.md`
+  against the code; check `DESIGN.md` and `IMPLEMENTATION-PLAN.md`); addendum A10; WP15 / R6
+- **What:**
+  - `DESIGN-v0.4-ADDENDUM.md` A10: status (WP15 done in `a3ce1d1`); A10.1 cites `qa/QA-REPORT-3306.md` and records
+    that its "Redis on .216" recommendation was not adopted; A10.2 notes what `7c062c4` and `570543a` had already
+    changed; A10.4 names the helpers and the `MSP_TEST_*_PASSWORD` variables; A10.5 accepts `7c062c4`'s
+    `redis:6379` rewrite of a local `REDIS_URL`; A10.6 adds the approval for `192.168.0.216:3306` and what the suite
+    does there; A10.7 fixes the `MSP_TEST_REDIS_PASSWORD` row and adds the three MySQL password rows; A10.8 records
+    the results; new **A10.9** (open, Thomas): test accounts the shared server needs for R6.
+  - `IMPLEMENTATION-PLAN.md`: v0.4 status (all of WP9–WP13 + WP15 on `fix/drug-search`, `feat/v0.4` fast-forwarded),
+    remaining order, WP15 row done, R6 open.
+  - `DESIGN.md` §10 and `CHANGES-FROM-v0.3.md`: point to `docs/OPERATION.md` / WP15 done.
+  - `qa/QA-REPORT-3306.md`: corrected code-under-test header (`feat/v0.4` @ `7c062c4`, not `10ee306`), WP labels,
+    local counts (387 backend / 43 Vitest on that code); recommendation marked superseded; follow-up section with the
+    WP15 fix, the lint failure, and the 2026-11-20 re-run (0 Redis errors, 89 MySQL access-denied).
