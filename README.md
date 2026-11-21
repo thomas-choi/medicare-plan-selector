@@ -39,8 +39,8 @@ It starts MySQL and Redis in Docker; tests use throwaway `msp_test_*` databases 
 ```bash
 make test
 ```
-Expected (as of the QA fixes): ruff/mypy/tsc/eslint/prettier clean, **305 backend tests passed** (0 skipped) and
-**27 Vitest tests passed** (10 files). If `npm ci` was skipped, `make` stops with "frontend dependencies are not
+Expected (as of WP15, 2026-11-20): ruff/mypy/tsc/eslint/prettier clean, **393 backend tests passed** (0 skipped)
+and **43 Vitest tests passed** (10 files). If `npm ci` was skipped, `make` stops with "frontend dependencies are not
 installed ... Run: (cd frontend && npm ci)".
 (The tests wipe `eph:*` and `quota:*` keys in the dev Redis, so don't run them while you test the UI.)
 
@@ -58,21 +58,13 @@ already holds data, e.g. from `make ingest`, is left alone. If the data is still
 (`curl http://127.0.0.1:8000/api/ready` shows the reason) and `make app-up` fails with the last API log lines instead
 of starting a UI that only says "unavailable".
 **Gotcha:** host-side targets (`ingest-dev`, `migrate`, `dev-data`, `api-dev`) read `DATABASE_URL`,
-`INGEST_DATABASE_URL`, `MIGRATOR_DATABASE_URL` and `REDIS_URL` from `.env`. There they must point at `127.0.0.1:3307`
-/ `127.0.0.1:6380` (this machine's stack, or leave them out) or at another machine's stack (below); `mysql:3306` /
+`INGEST_DATABASE_URL`, `MIGRATOR_DATABASE_URL` and `REDIS_URL` from `.env`. There the DB URLs must point at
+`127.0.0.1:3307` (or leave them out) or at a shared MySQL, and `REDIS_URL` stays on `127.0.0.1:6380`; `mysql:3306` /
 `redis:6379` only resolve inside containers, and `docker-compose.yml` sets those for the API container by itself.
 Otherwise these targets fail with "Can't connect to MySQL server on 'mysql'".
 
-**Using another machine's MySQL/Redis** (e.g. coding on ml3090 against the dev stack on ml3060, `192.168.0.216`):
-1. On ml3060: set `MSP_DB_BIND=192.168.0.216` in its `.env`, then `make stack-down && make stack-up && make
-   ingest-dev` (ports are bound when the containers are created). MySQL :3307 and Redis :6380 then answer on that
-   LAN address only. Their dev passwords are public in this repo, so do this only on a trusted LAN.
-2. On ml3090: point the four URLs in `.env` at `192.168.0.216:3307` / `192.168.0.216:6380`. The Makefile sees that
-   this is not the local machine (`scripts/devdb.sh`; `MSP_DB_HOST` overrides the detection): `stack-up` only checks
-   that the remote stack answers (and says what to do on ml3060 if not), `dev-data`/`ingest-dev`/`migrate` load the
-   data there, and `make app-up` runs the API container here against the same remote MySQL/Redis.
-
-`make test` always uses this machine's own stack (the tests create `msp_test_*` databases and run `docker compose`).
+**Redis is always this machine's.** MySQL may be a shared server (e.g. `192.168.0.216:3306`) for the app and for
+`make test`; Redis never moves with it. How to set that up: [docs/OPERATION.md](docs/OPERATION.md).
 Open **http://127.0.0.1:8080**. From another computer either tunnel (`ssh -L 8080:127.0.0.1:8080 <host>`, then open
 the same URL locally) or, on a trusted LAN, set `MSP_WEB_BIND=<the host's LAN IP>` (e.g. `192.168.0.216`) in `.env`,
 run `make app-up`, and open `http://192.168.0.216:8080` (the UI then answers on that IP only; `0.0.0.0` = every
@@ -170,6 +162,7 @@ Details: [DESIGN §8.5](docs/design/DESIGN.md).
 - [Design v0.3](docs/design/DESIGN.md) and [design index](docs/design/README.md)
 - [Implementation plan](docs/design/IMPLEMENTATION-PLAN.md) and [open questions](docs/design/OPEN-QUESTIONS.md)
 - [HUD API setup](docs/design/HUD-API-SETUP.md) · [Deployment](deploy/README.md)
+- [Operation: dev and test data stores](docs/OPERATION.md) (local or shared MySQL, app-local Redis, `MSP_TEST_*`)
 - [Data sources and attribution](docs/DATA-SOURCES.md)
 - [Security](docs/SECURITY.md) · [Contributing](docs/CONTRIBUTING.md) · [Changelog](docs/CHANGELOG.md)
 

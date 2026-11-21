@@ -1,5 +1,7 @@
 """Shared fixtures. Infra tests target the repo's docker-compose stack (127.0.0.1:3307 MySQL, :6380 Redis).
 
+MySQL may instead be a shared server (`MSP_TEST_MYSQL_HOST`, `MSP_MYSQL_PORT`, `MSP_TEST_*_PASSWORD`). Redis is
+app-local and never follows the MySQL host (DESIGN-v0.4-ADDENDUM A10): see `redis_test_url`.
 Tests never read a `.env` file: settings are built with `_env_file=None` and explicit values.
 """
 
@@ -7,21 +9,40 @@ from __future__ import annotations
 
 import os
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-MYSQL_HOST = os.environ.get("MSP_TEST_MYSQL_HOST", "127.0.0.1")
-MYSQL_PORT = os.environ.get("MSP_MYSQL_PORT", "3307")
-REDIS_PORT = os.environ.get("MSP_REDIS_PORT", "6380")
+# Dev-only passwords of the compose stack (docker-compose.yml); a shared MySQL sets its own via MSP_TEST_*_PASSWORD.
+DEV_PASSWORDS = {"migrator": "dev-migrator-pw", "ingest": "dev-ingest-pw", "api": "dev-api-pw", "redis": "dev-redis-pw"}
 
-MIGRATOR_URL = f"mysql+pymysql://msp_migrator:{os.environ.get("MSP_TEST_MIGRATOR_PASSWORD", "dev-migrator-pw")}@{MYSQL_HOST}:{MYSQL_PORT}/msp"
-INGEST_URL = f"mysql+pymysql://msp_ingest:{os.environ.get("MSP_TEST_INGEST_PASSWORD", "dev-ingest-pw")}@{MYSQL_HOST}:{MYSQL_PORT}/msp"
-API_URL = f"mysql+pymysql://msp_api:{os.environ.get("MSP_TEST_API_PASSWORD", "dev-api-pw")}@{MYSQL_HOST}:{MYSQL_PORT}/msp"
-REDIS_URL = f"redis://:{os.environ.get("MSP_TEST_REDIS_PASSWORD", "dev-redis-pw")}@{MYSQL_HOST}:{REDIS_PORT}/0"
+
+def mysql_test_url(role: str, env: Mapping[str, str] = os.environ) -> str:
+    """URL of the `msp` schema for one MySQL role (`migrator`, `ingest`, `api`)."""
+    host = env.get("MSP_TEST_MYSQL_HOST") or "127.0.0.1"
+    port = env.get("MSP_MYSQL_PORT") or "3307"
+    password = env.get(f"MSP_TEST_{role.upper()}_PASSWORD") or DEV_PASSWORDS[role]
+    return f"mysql+pymysql://msp_{role}:{password}@{host}:{port}/msp"
+
+
+def redis_test_url(env: Mapping[str, str] = os.environ) -> str:
+    """Test Redis URL (addendum A10.4): `MSP_TEST_REDIS_URL` wins; else `MSP_TEST_REDIS_HOST` (default 127.0.0.1,
+    never the MySQL host), `MSP_REDIS_PORT` (6380) and `MSP_TEST_REDIS_PASSWORD` (the compose dev password)."""
+    if url := env.get("MSP_TEST_REDIS_URL"):
+        return url
+    host = env.get("MSP_TEST_REDIS_HOST") or "127.0.0.1"
+    port = env.get("MSP_REDIS_PORT") or "6380"
+    password = env.get("MSP_TEST_REDIS_PASSWORD") or DEV_PASSWORDS["redis"]
+    return f"redis://:{password}@{host}:{port}/0"
+
+
+MIGRATOR_URL = mysql_test_url("migrator")
+INGEST_URL = mysql_test_url("ingest")
+API_URL = mysql_test_url("api")
+REDIS_URL = redis_test_url()
 
 
 def compose(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:

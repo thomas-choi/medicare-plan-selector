@@ -249,3 +249,25 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
 - Thomas: Redis stays with the app/local stack; the shared server is MySQL only. Readiness is unchanged.
 - Docs only (no code, Makefile, compose or test changes in this commit): addendum A10, DESIGN.md §10,
   WP15 in `IMPLEMENTATION-PLAN.md` (owner: Claude worker on ml3090, review: Philip).
+
+## WP15 — Redis is app-local in tests and make targets
+- **When:** 2026-11-20 20:35 MST
+- **Who:** Claude (Claude Opus 5.5, coding worker)
+- **Reference:** WP15 in `docs/design/IMPLEMENTATION-PLAN.md`; addendum A10.4–A10.7 in
+  `docs/design/DESIGN-v0.4-ADDENDUM.md`; failures in `qa/QA-REPORT-3306.md` (39 failed + 8 errors, all Redis)
+- **What:**
+  - `backend/tests/conftest.py`: `redis_test_url()` (`MSP_TEST_REDIS_URL`, else `MSP_TEST_REDIS_HOST` default
+    `127.0.0.1`, `MSP_REDIS_PORT`, `MSP_TEST_REDIS_PASSWORD`) never uses the MySQL host; `mysql_test_url()` keeps the
+    `MSP_TEST_*_PASSWORD` overrides from `570543a` and fixes its three over-long lines (ruff E501, `make lint` failed).
+  - `scripts/devdb.sh`: with `REDIS_URL` unset, Redis is `127.0.0.1`, not the MySQL host; `devdb_check_remote` checks
+    only what is remote and no longer tells the operator to publish Redis on the MySQL server.
+  - `Makefile`: `test-backend` sets `MSP_TEST_REDIS_HOST` on its own (local bind), never from `MSP_TEST_MYSQL_HOST`;
+    `HOST_URL_HINT`, `stack-up` and `app-up` text say Redis stays on this machine.
+  - Comments only: `docker-compose.yml`, `docker-compose.prod.yml`, `.env.example`.
+  - New `docs/OPERATION.md` (local vs shared MySQL, app-local Redis, `MSP_TEST_*` table), linked from README.
+    README: corrected the "another machine's MySQL/Redis" section and the expected test counts.
+  - Tests: R1 `tests/unit/test_test_stores.py` (4), R2 and the `test-backend` recipe in `test_dev_tooling.py` (2).
+    R3–R5: existing tests unchanged and green.
+  - Result: `make test` green, 393 backend + 43 Vitest. R6 against `192.168.0.216:3306` with local Redis: 304 passed,
+    89 errors, **0 Redis errors**; every error is `Access denied for 'msp_migrator'@'192.168.0.212'` (accounts on the
+    shared server, see `qa/QA-REPORT-3306.md`).

@@ -31,7 +31,9 @@ DEVDB := $(LOAD_ENV) . $(CURDIR)/scripts/devdb.sh;
 
 # --no-recreate: the dev MySQL runs on tmpfs, so recreating it (compose does that whenever its config changes)
 # would silently wipe the schema and data. To apply a changed mysql/redis config: make stack-down && make stack-up.
-# When .env points the URLs at another machine (e.g. ml3090 using ml3060's stack), only check that it answers.
+# When .env points the MySQL URLs at another machine (e.g. the shared MySQL on 192.168.0.216), only check that it
+# answers and start this machine's Redis: Redis is app-local (DESIGN-v0.4-ADDENDUM A10) unless REDIS_URL names
+# another machine on purpose.
 stack-up:  ## MySQL 8.4 (:3307) and Redis 7.4 (:6380, no persistence) for the app; local, or the remote one in .env
 	@$(DEVDB) if [ -n "$$DEV_DB_REMOTE" ]; then \
 	  [ -n "$$DEV_REDIS_REMOTE" ] || $(COMPOSE) up -d --wait --no-recreate redis; devdb_check_remote; \
@@ -62,8 +64,10 @@ test-fast: frontend-deps  ## unit tests only, no Docker
 	cd frontend && $(NODE_BIN)/vitest run
 
 # Tests use the local stack on 127.0.0.1, or on MSP_DB_BIND when that publishes it on one LAN address only.
+# MSP_TEST_MYSQL_HOST may name a shared MySQL instead; Redis is set on its own and stays on this machine (A10).
 test-backend: local-stack-up
 	@bind=$$($(LOAD_ENV) printf %s "$${MSP_DB_BIND:-}"); case "$$bind" in ""|0.0.0.0) bind=127.0.0.1;; esac; \
+	  [ -n "$${MSP_TEST_REDIS_URL:-}" ] || export MSP_TEST_REDIS_HOST="$${MSP_TEST_REDIS_HOST:-$$bind}"; \
 	  cd backend && MSP_TEST_MYSQL_HOST="$${MSP_TEST_MYSQL_HOST:-$$bind}" uv run pytest -q
 
 test-frontend: frontend-deps
@@ -102,9 +106,9 @@ web-dev:  ## Vite dev server at http://localhost:5173 (proxies /api to :8000)
 # committed dev sample data; a database that already holds plan data (dev sample or a real `make ingest`) is untouched.
 # The check uses the same connection as `make ingest-dev` (INGEST_DATABASE_URL) and skips Redis, which ingest never uses.
 HOST_URL_HINT := Host-side make targets read DATABASE_URL, INGEST_DATABASE_URL, MIGRATOR_DATABASE_URL and REDIS_URL from \
-  .env: they must use 127.0.0.1:3307 / 127.0.0.1:6380 (this machine's stack) or the LAN address of the machine whose \
-  stack you use (e.g. 192.168.0.216:3307 / :6380, published there with MSP_DB_BIND), or be left out. The names \
-  mysql:3306 and redis:6379 only resolve inside containers.
+  .env: the three DB URLs must use 127.0.0.1:3307 (this machine's stack) or the address of the MySQL you use \
+  (e.g. the shared 192.168.0.216:3306), or be left out. REDIS_URL stays on this machine (127.0.0.1:6380) or is left \
+  out: a remote MySQL does not need a remote Redis. The names mysql:3306 and redis:6379 only resolve inside containers.
 dev-data: stack-up  ## load the dev sample data only if the plan database is empty
 	@cd backend && $(LOAD_ENV) env $(DEV_DB) sh -c 'DATABASE_URL="$$INGEST_DATABASE_URL" exec uv run selector check-data --data-only' 2>/dev/null; rc=$$?; \
 	  if [ $$rc -eq 3 ]; then \
@@ -117,7 +121,8 @@ dev-data: stack-up  ## load the dev sample data only if the plan database is emp
 
 # Only the app services (api, web) are built/recreated; MySQL and Redis are started if needed but never recreated.
 app-up: stack-up dev-data  ## API + nginx web UI in Docker on http://$${MSP_WEB_BIND:-127.0.0.1}:$${MSP_WEB_PORT:-8080}
-	@$(DEVDB) [ -z "$$DEV_DB_REMOTE" ] || echo "api container uses the dev MySQL/Redis on $$DEV_DB_HOST"; \
+	@$(DEVDB) [ -z "$$DEV_DB_REMOTE" ] || echo "api container uses the MySQL on $$DEV_DB_HOST and the Redis on \
+	  $$([ -n "$$DEV_REDIS_REMOTE" ] && echo "$$DEV_REDIS_HOST" || echo "this machine")"; \
 	  $(COMPOSE) --profile app up -d --build --wait --no-deps api web || { \
 	  echo "" >&2; \
 	  echo "ERROR: the API did not become ready. Last API log lines:" >&2; \
