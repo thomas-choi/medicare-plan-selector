@@ -1,6 +1,9 @@
 # Changelog
 
-One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
+One entry per work package or task. Dates are MST (America/Phoenix). Since 2026-11-21 every entry follows rule R-B
+(**When** / **Who** / **Reference** / **What**; see [CONTRIBUTING.md](CONTRIBUTING.md)). Earlier entries keep their
+original form. Branch names in headings are where the work was first committed; all of it is now on `fix/drug-search`
+(pushed) and waits for the merge into `main` (OPEN-QUESTIONS Q12).
 
 ## WP0 — Scaffold (2026-11-12)
 - Backend: `backend/` uv project (Python 3.13), FastAPI app factory with `/api/health`, settings for every
@@ -209,7 +212,7 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
   instructions for the DB host), and `app-up` gives the api container the same remote URLs (`COMPOSE_*_URL`).
   `make test` always uses the local stack (`local-stack-up`; `MSP_TEST_MYSQL_HOST` follows `MSP_DB_BIND`).
 
-## WP9 — Drug search fix + design v0.4 addendum (2026-11-19, local branch `fix/drug-search`)
+## WP9 — Drug search fix + design v0.4 addendum (2026-11-19, branch `fix/drug-search`, pushed)
 - Thomas's ml3090 test: "the drugs search has no response". Reproduced: RxNav `drugs.json` returns nothing for
   "tamsulosin 0.4 mg capsule"; the intake showed nothing for an empty result and Enter submitted the form.
 - `RxNavClient.find`: exact → ingredient name → approximate match, ranked (RxCUI 863669 first for the full string);
@@ -219,25 +222,16 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
 - Docs: `docs/design/DESIGN-v0.4-ADDENDUM.md` (doctors, dental, Original Medicare + Part D baseline),
   `CHANGES-FROM-v0.3.md`, WP10–WP14 in `IMPLEMENTATION-PLAN.md`, Q12–Q21 in `OPEN-QUESTIONS.md`.
 
+## Docs — Mermaid data model diagrams in DESIGN.md §5 (2026-11-19, `4b4350b`, `f3347bd`)
+- **When:** 2026-11-19 16:52 and 16:55 MST (commit times; entry added 2026-11-21 because it was missing)
+- **Who:** not recorded in the commits (git author `thomas-choi`); this entry was added by Philip
+- **Reference:** the design's documentation-first rule (Mermaid data-model diagrams); commit messages `4b4350b`, `f3347bd`
+- **What:**
+  - `4b4350b` `docs/design/DESIGN.md` §5.0: Mermaid data model diagrams (database `msp` → table groups → tables;
+    ER diagrams for public plan data and for user, session and operations data, with keys and references).
+  - `f3347bd` `docs/design/DESIGN.md`: diagram titles name the database `msp`.
 
-## QA — shared-MySQL (3306) regression round (2026-11-19, Hermes agent)
-- when: 2026-11-19 ~21:00 MST
-- who: Hermes agent
-- Reference: Thomas's request to re-run regression after the WP10–WP13 pull, using the shared
-  dev/QA MySQL service (192.168.0.216:3306) with live CMS 2027 data; results in `qa/QA-REPORT-3306.md`.
-- What:
-  - Provisioned DBA access on the shared server: schema `msp`, users `msp_migrator` /
-    `msp_ingest` / `msp_api` (and later `msp_dev_*` restricted to ml3090, 192.168.0.212).
-  - Applied Alembic migrations 0004–0006 and re-ran the real 2027 ingest on the shared server
-    (`plan_dental` 5,561 rows, `medicare_params` 1 row); `sources.lock` updated and committed.
-  - Test-code change: `backend/tests/conftest.py` now reads DB/Redis credentials from
-    `MSP_TEST_*_PASSWORD` env vars, keeping the committed dev-stack literals as defaults.
-  - Ran the full backend suite against 3306: 340 passed / 39 failed / 8 errors — every
-    MySQL-backed test green; all failures are Redis-only (no Redis on the shared server).
-  - Standard `make test` (local stack) fully green: lint, backend, 43 Vitest tests.
-  - Docs: added `qa/QA-REPORT-3306.md`; committed and pushed branch `qa/v0.4-3306-regression`
-    (commit `570543a`); repo remote switched from https to SSH.
-## WP10–WP13 — Design v0.4 (2026-11-19, local branch `feat/v0.4`)
+## WP10–WP13 — Design v0.4 (2026-11-19, branch `feat/v0.4`, pushed; merged into `fix/drug-search`)
 - **WP10** 2027 Medicare amounts: `medicare_params` (Alembic `0004`), loaded by the ingest from cited values in
   `sources/2027.yaml` (Part B $209.40/month, $292 deductible; Part A $1,776; Medigap HD $3,050; Plan N copays).
   The 2026 Part B placeholder settings (`PART_B_*`) are gone. Golden Maricopa JSON: +$78/yr, ranks unchanged.
@@ -278,7 +272,7 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
   - Docs: added `qa/QA-REPORT-3306.md`; committed and pushed branch `qa/v0.4-3306-regression`
     (commit `570543a`); repo remote switched from https to SSH.
 
-## Design — Redis is app-local (2026-11-20, local branch `fix/drug-search`)
+## Design — Redis is app-local (2026-11-20, branch `fix/drug-search`, pushed as `4c28e19`)
 - Hermes QA against shared MySQL at 192.168.0.216:3306: 340 passed, 39 failed, 8 errors, all Redis connection
   failures. Root cause: `backend/tests/conftest.py` built `REDIS_URL` from `MSP_TEST_MYSQL_HOST` and a hard-coded
   dev password; `MSP_TEST_REDIS_PASSWORD` was ignored. `scripts/devdb.sh` also fell back Redis to the MySQL host.
