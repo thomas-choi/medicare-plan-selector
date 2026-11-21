@@ -1,14 +1,14 @@
 # Medicare Plan Selector: Design v0.4 Addendum (Thomas's test comments, 2026-11-19)
 
-Status: **Draft for Thomas's sign-off.** Author: Philip. Date: 2026-11-19 (MST, America/Phoenix); A10 added 2026-11-20.
-Base: Design v0.3 (`DESIGN.md`, signed off 2026-11-12) and branch `feat/mvp-wp2-8` at `10ee306`.
+Status: **Ready for Thomas's sign-off** (2026-11-21; not signed off yet). Author: Philip. Date: 2026-11-19 (MST, America/Phoenix); A10 added 2026-11-20; paperwork fixed 2026-11-21.
+Base: Design v0.3 (`DESIGN.md`, signed off 2026-11-12). Written against `feat/mvp-wp2-8` at `10ee306`; everything in this addendum is now implemented on branch `fix/drug-search` at `df85aba` (pushed), except WP14, which the v0.5 addendum (`DESIGN-v0.5-ADDENDUM.md` B3) redesigns. `main` is still `254266a` until Thomas approves the merge (Q12).
 This addendum adds to v0.3; where it differs, the addendum wins. Section numbers below are `A1`–`A10`.
 
 Thomas tested on ml3090 (UI on `http://192.168.0.216:8080`) and sent four comments:
 
 | # | Thomas's comment | Answer in short | Section |
 |---|---|---|---|
-| 1 | "The drugs search has no response" | **Reproduced and fixed.** RxNav's name search returns nothing for a name plus strength and form ("tamsulosin 0.4 mg capsule"), and the form showed nothing for an empty result. Fixed on local branch `fix/drug-search` (commit `19111e0`), with tests. | A2 |
+| 1 | "The drugs search has no response" | **Reproduced and fixed.** RxNav's name search returns nothing for a name plus strength and form ("tamsulosin 0.4 mg capsule"), and the form showed nothing for an empty result. Fixed on branch `fix/drug-search` (commit `19111e0`, pushed), with tests. | A2 |
 | 2 | "Would the entered Doctor field impact the search of plan?" | **Today: no.** The names are stored with the profile and nothing else reads them. v0.4 adds an NPI pick plus a directory check against each carrier's public CMS-mandated FHIR directory, shown as *listed / not listed / can't check*, with an optional filter. | A3 |
 | 3 | "Should include the dental information if the plan included it. Try to look at each provider's sites for the plan detail" | **Yes.** CMS PBP file `pbp_b16_dental.txt` (S2, already downloaded by the ingest) has preventive/comprehensive dental cost sharing and annual maximums for every plan. Ingest it and show it. Carrier Summary of Benefits / EOC PDFs: **link them** (optional, cached, rate-limited fetch), CMS stays the source of truth. | A4 |
 | 4 | "Always include the original Medicare + Part D as one standard" | **Yes.** A pinned baseline row, "Original Medicare + Part D (standard)", in every comparison: Parts A/B with 2027 amounts + the lowest-cost stand-alone PDP for the user's drugs, with an optional Medigap (G / N / high-deductible G) assumption. | A5 |
@@ -22,8 +22,9 @@ Status labels as in v0.3: **V** verified (opened or called on the date shown), *
 | Version | Date | Change |
 |---|---|---|
 | v0.3 | 2026-11-12 | Signed off (no-save mode). |
-| **v0.4 (draft)** | 2026-11-19 | This addendum: drug-search fix (A2), doctors/network directory check (A3), dental from PBP b16 + carrier documents (A4), pinned Original Medicare + Part D baseline (A5), 2027 Part A/B amounts now **V** (A5.2), new API fields (A6), work packages WP9–WP14 and tests (A7, `IMPLEMENTATION-PLAN.md`), open decisions OD-12 to OD-21 (A8, `OPEN-QUESTIONS.md`). |
-| **v0.4 (draft)** | 2026-11-20 | A10: Redis is app-local; tests use this machine's MySQL only (192.168.0.216 is live data; shared-MySQL test mode withdrawn the same day). Thomas decided after the Hermes QA Redis failures. Code changes are WP15 (`IMPLEMENTATION-PLAN.md`), not this commit. |
+| v0.4 (draft) | 2026-11-19 | This addendum: drug-search fix (A2), doctors/network directory check (A3), dental from PBP b16 + carrier documents (A4), pinned Original Medicare + Part D baseline (A5), 2027 Part A/B amounts now **V** (A5.2), new API fields (A6), work packages WP9–WP14 and tests (A7, `IMPLEMENTATION-PLAN.md`), open decisions OD-12 to OD-21 (A8, `OPEN-QUESTIONS.md`). |
+| v0.4 (draft) | 2026-11-20 | A10: Redis is app-local; tests use this machine's MySQL only (192.168.0.216 is live data; shared-MySQL test mode withdrawn the same day). Thomas decided after the Hermes QA Redis failures. Code changes are WP15 (`IMPLEMENTATION-PLAN.md`), implemented in `a3ce1d1` the same day. |
+| **v0.4 (ready for sign-off)** | 2026-11-21 | Status changed to ready for Thomas's sign-off. Stale lines fixed: base branch (header), WP15 done (A1, A7), Q12 target is `main` (A8), S14 dataset id recorded (A9). WP14 and the dental-use preset are redesigned in the v0.5 addendum (B3, B4); Aetna/Q14 in v0.5 B5. |
 
 ### A1.1 Architecture after v0.4
 
@@ -237,7 +238,7 @@ Spot checks on 2026-11-19 (**V** for the calls listed; coverage beyond them **U*
 |---|---|---|---|
 | UnitedHealthcare | `https://flex.optum.com/fhirpublic/R4` | none | `/metadata` 200; `Practitioner?identifier=<NPI>` returned 2 entries; `InsurancePlan` carries `urn:cms:medicare-advantage-contract` = `H2406076000` and `network` references |
 | Humana | `https://fhir.humana.com/api` | none | `/metadata` 200; `InsurancePlan` identifier `H3642-001-000-2027` + network references; `Practitioner?identifier=` returned 0 for a Phoenix NPI (search by identifier may be unsupported, **U**) |
-| Aetna (CVS) | `https://apif1.aetna.com/fhir/v1/providerdirectory` | **app registration / client credentials** (developer portal) | Not called. CMS FAQ says payers may require an API key for the app, not the user. Needs Thomas to register (OD-14). |
+| Aetna (CVS) | `https://apif1.aetna.com/fhir/v1/providerdirectory` | **app registration / client credentials** (developer portal) | Not called on 2026-11-19. CMS FAQ says payers may require an API key for the app, not the user. Needs Thomas to register (OD-14). **Update 2026-11-21:** `/metadata` is public, data calls return 401 without client credentials; all Maricopa carriers and the Aetna key flow: v0.5 addendum B5. |
 | Others (BCBS plans, Devoted, Alignment, Wellcare/Centene, Banner, …) | per-carrier | mostly none | **U**: to be catalogued in `directory_endpoint` (WP13) |
 
 Directory data is known to be imperfect, and a public directory proves *listing*, not that the doctor accepts new
@@ -365,7 +366,8 @@ flowchart LR
 - **Must-have:** "Includes dental" (preventive at least) and optional "Dental max at least $X".
 - **Cost engine:** dental is **not** added to the yearly total by default (no CMS price data for dental work).
   Optional "Dental use" preset (OD-16): `none | cleanings | major` adds an assumed allowed amount (U, labelled), capped by
-  the plan maximum: shown as a separate line so the medical/drug totals stay comparable to v0.3.
+  the plan maximum: shown as a separate line so the medical/drug totals stay comparable to v0.3. **Superseded by v0.5
+  addendum B4** (presets `none | preventive | basic | major | dentures`, WP17).
 - **Agent:** new tool `get_plan_benefits(plan_key, category='dental')` returning the `plan_dental` row with `src_ref`;
   the validator treats dental dollar amounts like any other tool number.
 
@@ -393,7 +395,7 @@ Honest conclusion:
   tables span pages). v0.4 does **not** extract numbers from PDFs. A later step may show extracted text side by side
   with the CMS value for a human to compare, labelled "From the carrier's PDF (fetched Nov 19), not checked by CMS".
 
-Design (WP14, optional, after Thomas enrolls):
+Design (WP14, optional, after Thomas enrolls). **Superseded by v0.5 addendum B3** (three URL tiers, link-health checks, API and UI); the outline below is kept for history:
 
 ```mermaid
 sequenceDiagram
@@ -587,14 +589,14 @@ Response additions:
 ## A7. Work packages and tests
 
 See `IMPLEMENTATION-PLAN.md` § "v0.4 work packages" for WP9–WP15 and the test IDs (D, P, DN, B, CD, R).
-WP15 is the coding follow-up to A10 (Makefile, `scripts/devdb.sh`, `conftest.py`, related comments). It is not done in this documentation commit.
+WP15 is the coding follow-up to A10 (Makefile, `scripts/devdb.sh`, `conftest.py`, related comments); it is **done** (`a3ce1d1`, 2026-11-20). WP9–WP13 and WP15 are done; WP14 is not started and is redesigned in the v0.5 addendum B3.
 
 ## A8. Open decisions for Thomas
 
-See `OPEN-QUESTIONS.md` Q12–Q21. The ones that change behaviour most:
-- **Q12** Merge `fix/drug-search` into `feat/mvp-wp2-8` (and push) now?
+See `OPEN-QUESTIONS.md` Q12–Q21; each has a proposed resolution since 2026-11-21 (Q12 and Q14 need Thomas). The ones that change behaviour most:
+- **Q12** Merge `fix/drug-search` into `main` (fast-forward from `254266a` to `df85aba`, then push)? Needs Thomas's OK.
 - **Q13** Doctor filter default: badges only (default) vs. drop plans that don't list a must-keep doctor.
-- **Q14** Register an app with Aetna (and other carriers that need a key) for directory access?
+- **Q14** Register an app with Aetna (and other carriers that need a key) for directory access? (Proposed resolution and the carrier table: v0.5 addendum B5; needs Thomas.)
 - **Q18** Baseline PDP choice: lowest estimated cost (default) vs. lowest premium vs. user-picked.
 
 ## A9. Sources added in v0.4
@@ -605,7 +607,7 @@ See `OPEN-QUESTIONS.md` Q12–Q21. The ones that change behaviour most:
 | S7 | Part B 2027: https://www.federalregister.gov/d/2026-23601 ; Part A 2027: https://www.federalregister.gov/d/2026-23603 | **V** |
 | S10 (detail) | RxNav `drugs.json`, `approximateTerm.json`, `rxcui/{id}/properties.json`: https://lhncbc.nlm.nih.gov/RxNav/APIs/RxNormAPIs.html ; terms of service (20 requests/s/IP): https://lhncbc.nlm.nih.gov/RxNav/TermsofService.html | **V** (live calls); rate limit **D** |
 | S13 | CMS Provider Directory API FAQ: https://www.cms.gov/initiatives/burden-reduction/overview/interoperability/frequently-asked-questions/provider-directory-api ; CMS-9115-F FAQ PDF: https://www.cms.gov/files/document/cms-9115-frequently-asked-questions-faqs.pdf ; Da Vinci PDex Plan-Net IG: https://hl7.org/fhir/us/davinci-pdex-plan-net/ ; UHC: https://www.uhc.com/legal/interoperability-apis/patient-access-api ; Humana: https://developers.humana.com/ ; Aetna: https://developerportal.aetna.com/ | **V** (FAQ read; UHC and Humana endpoints called); Aetna **D** |
-| S14 | CMS Opt Out Affidavits: https://data.cms.gov/resources/opt-out-affidavits-data-dictionary (API `data.cms.gov/data-api/v1/dataset/<id>/data`) | **D** (dataset id to confirm in WP13) |
+| S14 | CMS Opt Out Affidavits: https://data.cms.gov/resources/opt-out-affidavits-data-dictionary ; API `https://data.cms.gov/data-api/v1/dataset/cc4e7ff6-9433-4765-b073-8bf1ce09093b/data` (dataset id confirmed in WP13: `backend/selector/config.py` `optout_url`, `sources/directories.yaml` `optout.dataset_id`; vintage "Opt Out Affidavits 2026-09-01") | **V** (used by WP13) |
 | S15 | 42 CFR 422.2265 (websites): https://www.ecfr.gov/current/title-42/chapter-IV/subchapter-B/part-422/subpart-V/section-422.2265 ; 422.2267: https://www.ecfr.gov/current/title-42/chapter-IV/subchapter-B/part-422/subpart-V/section-422.2267 | **D** |
 | S16 | Medicare.gov dental: https://www.medicare.gov/coverage/dental-services ; Medigap benefits chart: https://www.medicare.gov/health-drug-plans/medigap/basics/compare-plan-benefits ; Medigap HD deductible 2027: https://www.cms.gov/files/document/cy-2027-medigap-high-deductible-options-fjg.pdf | **V** (search extracts), PDF **D** |
 | S17 | NPPES API v2.1: https://npiregistry.cms.hhs.gov/api-page | **V** (live call; v0.3 S11) |

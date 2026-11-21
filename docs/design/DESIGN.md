@@ -1,7 +1,7 @@
 # Medicare Plan Selector: Technical Design v0.3
 
 Repo: https://github.com/thomas-choi/medicare-plan-selector (**public**). Service: `https://med.thomas-choi.com:<MED_PUBLIC_PORT>` (**public, multi-user**).
-Status: **Signed off by Thomas 2026-11-12 with the no-save addition** (§8.5). **v0.4 addendum (draft, 2026-11-19, A10 on 2026-11-20): `DESIGN-v0.4-ADDENDUM.md`** adds the drug-search fix, doctors/network check, dental, the pinned Original Medicare + Part D baseline, and the app-local Redis / local-MySQL-for-tests rule (A10); where they differ, the addendum wins. Defaults in OPEN-QUESTIONS are accepted unless Thomas objects. Author: Philip. Implementer: Claude Code worker. Date: 2026-11-12 (MST, America/Phoenix).
+Status: **Signed off by Thomas 2026-11-12 with the no-save addition** (§8.5). **v0.4 addendum (2026-11-19, A10 on 2026-11-20; ready for Thomas's sign-off): `DESIGN-v0.4-ADDENDUM.md`** adds the drug-search fix, doctors/network check, dental, the pinned Original Medicare + Part D baseline, and the app-local Redis / local-MySQL-for-tests rule (A10). **v0.5 addendum (2026-11-21; ready for Thomas's sign-off): `DESIGN-v0.5-ADDENDUM.md`** adds the repo rules R-A/R-B, No-save as a hard default, carrier documents (WP14), the dental-use preset, directories for every Maricopa carrier, AK/CT mapping, Playwright E2E, the deploy checklist and the legal review. Where they differ, the newer addendum wins. Defaults in OPEN-QUESTIONS are accepted unless Thomas objects. Author: Philip. Implementer: Claude Code worker. Date: 2026-11-12 (MST, America/Phoenix).
 
 Key dates:
 - Open Enrollment for plan year 2027 ends **Dec 7, 2026**.
@@ -128,7 +128,7 @@ flowchart TD
 
 ### 5.0 Data model diagrams
 
-Database `msp` (MySQL, utf8mb4; `MYSQL_DATABASE: msp` in `docker-compose.prod.yml`). The schema is built by the Alembic migrations in `backend/alembic/versions/` (`0001` baseline, `0002` SSA county re-key + inpatient intervals, `0003` feedback context). Solid lines in the ER diagrams are real foreign keys; dotted lines are logical joins on `(plan_year, plan_key)` and similar keys that are not enforced as foreign keys, because the plan tables are rebuilt per ingest.
+Database `msp` (MySQL, utf8mb4; `MYSQL_DATABASE: msp` in `docker-compose.prod.yml`). The schema is built by the Alembic migrations in `backend/alembic/versions/` (`0001` baseline, `0002` SSA county re-key + inpatient intervals, `0003` feedback context; v0.4 added `0004` `medicare_params`, `0005` `plan_dental`, `0006` directories; v0.5 designs `0007` `plan_document` and `0008` `directory_contract`, diagrams in `DESIGN-v0.5-ADDENDUM.md` B3.3 and B5.4). Solid lines in the ER diagrams are real foreign keys; dotted lines are logical joins on `(plan_year, plan_key)` and similar keys that are not enforced as foreign keys, because the plan tables are rebuilt per ingest.
 
 **Database `msp`: overview, database → table groups → tables (primary keys in brackets).**
 
@@ -504,7 +504,7 @@ LLM_PRICE_IN_PER_MTOK_USD=  LLM_PRICE_OUT_PER_MTOK_USD=   # for the cost ledger/
 - **Anonymous by default.**
   - The session ID is a random 256-bit value in an `HttpOnly; Secure; SameSite=Lax` cookie. Only its SHA-256 is stored.
   - Optional accounts (email or OAuth) are post-MVP.
-- **Consent screen:** the user picks **No-save** (§8.5) or **Save for `RETENTION_DAYS`**. The default is set by `DEFAULT_SESSION_MODE`, and it is **No-save** unless Thomas changes it. The consent screen must be shown before anything is saved. It says what is stored, for how long, and which third parties receive it (the chosen LLM provider, and RxNav, NPPES and HUD without identity). Declining consent is the same as No-save mode.
+- **Consent screen:** the user picks **No-save** (§8.5) or **Save for `RETENTION_DAYS`**. The default is **No-save**, fixed (v0.5 addendum B2: a hard requirement since 2026-11-21; `DEFAULT_SESSION_MODE` may only be `nosave`). The consent screen must be shown before anything is saved. It says what is stored, for how long, and which third parties receive it (the chosen LLM provider, and RxNav, NPPES and HUD without identity). Declining consent is the same as No-save mode.
 - **Retention:**
   - Profiles and chat are deleted after `RETENTION_DAYS` of inactivity. The default is 30; see OPEN-QUESTIONS.
   - A nightly purge job does this.
@@ -555,7 +555,7 @@ This was added at sign-off. Choosing No-save means **we keep nothing about you o
 
 | Aspect | No-save behavior |
 |---|---|
-| **Selection** | Chosen on the consent screen. Preselected when `DEFAULT_SESSION_MODE=nosave` (the default). The choice is fixed for the session; switching starts a new session. The mode is held in the Redis session record and in a non-identifying flag in the cookie. |
+| **Selection** | Chosen on the consent screen. No-save is always preselected (`DEFAULT_SESSION_MODE` may only be `nosave`, v0.5 addendum B2). The choice is fixed for the session; switching starts a new session. The mode is held in the Redis session record and in a non-identifying flag in the cookie. |
 | **Where data lives** | Profile (ZIP/county, drugs, doctors, budget, utilization), chat, LLM transcripts, tool results and recommendations live **only in Redis** under `eph:{sid_hash}:*`. Redis runs with `save ""`, `appendonly no` and `/data` on **tmpfs**. Each value is AES-GCM encrypted with a **per-session key** that lives only in the user's cookie (`HttpOnly; Secure`). The server holds ciphertext it can't read once the cookie is gone. |
 | **No MySQL** | No rows go into `session`, `profile`, `chat_msg`, `recommendation`, `consent_log` or `feedback`, apart from the opt-in described under Feedback below. This is enforced in code: `SessionStore` has two implementations, `MySQLSessionStore` and `EphemeralSessionStore`. A SQLAlchemy `before_cursor_execute` guard **raises** if an INSERT, UPDATE or DELETE hits a user table while the request context is in no-save mode. |
 | **No disk** | There is no file cache of profile data. No-save chat doesn't use the HUD/RxNav/NPPES caches that hold user-linked data (those caches are already user-agnostic: ZIP→FIPS, drug name→RxCUI). `uvicorn` has no request-body logging. Core dumps are disabled in the container (`ulimit -c 0`). |

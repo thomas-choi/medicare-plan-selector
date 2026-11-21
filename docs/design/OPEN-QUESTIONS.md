@@ -1,4 +1,4 @@
-# Open Questions v0.3: defaults accepted, pending Thomas's objection
+# Open Questions (v0.3 defaults, v0.4 and v0.5 resolutions)
 
 Thomas signed off on v0.2 on 2026-11-12 and added the no-save option. The defaults below **apply unless Thomas objects**. The worker should treat them as decided but should confirm Q1 and Q8 in Plan mode.
 
@@ -22,19 +22,33 @@ Thomas's own intake for his MVP session:
 - doctors he must keep
 - drug list
 
-## v0.4 open decisions (2026-11-19, `DESIGN-v0.4-ADDENDUM.md`)
+## v0.4 open decisions (2026-11-19, `DESIGN-v0.4-ADDENDUM.md`): resolutions proposed 2026-11-21
 
-Defaults apply unless Thomas objects.
+Philip worked through every question on 2026-11-21 (Thomas's assignment: "try all Q12–Q21"). "Resolved (proposed)"
+means: this is the answer the design and the work packages now follow, **pending Thomas's sign-off**. Where a question
+needs Thomas personally, the row says exactly what is needed.
 
-| # | Decision | Default | Notes |
+| # | Decision | Resolution | Status | Rationale and research |
+|---|---|---|---|---|
+| Q12 | ~~Merge `fix/drug-search` into `feat/mvp-wp2-8`~~ → **Merge `fix/drug-search` into `main` and push** | Fast-forward `main` from `254266a` to `fix/drug-search` (`df85aba` plus this docs commit once pushed); no merge commit. Then retire `feat/mvp`, `feat/mvp-wp2-8`, `feat/v0.4` and `qa/v0.4-3306-regression` (all contained in it) only if Thomas wants. | **Needs Thomas:** an explicit "yes, fast-forward main and push" in chat. Nothing is merged or pushed before that. | Checked 2026-11-21: `origin/main` (`254266a`) is an ancestor of `origin/fix/drug-search`, 50 commits ahead, so a fast-forward is possible. `fix/drug-search` already contains every other branch. The deploy (WP21) builds from `main`. |
+| Q13 | Doctor effect on results | **Badges only by default**; optional must-have "only plans that list my must-keep doctors" drops only `not_listed` (and `opted_out` for the baseline); `unknown`/`unavailable` never drop; `doctor_fit` weight 0 by default | Resolved (proposed by Philip, pending Thomas sign-off). Implemented in WP13. | Directory data is often stale; with only 44 of 92 Maricopa MA plans checkable today (v0.5 B5.2), a default filter would drop plans unevenly by carrier, which breaks the v0.3 §6.3 neutrality rule. |
+| Q14 | Register apps with carriers whose directory needs a key (Aetna first) | **Yes for Aetna**, as soon as Thomas registers: client-credentials pair in `.env` only (`DIRECTORY_AETNA_CLIENT_ID/_SECRET`), token in process memory, status `needs_key` → `live` (v0.5 B5.5). Same pattern later for HealthSpring, Wellpoint, Alignment and AZ Blue. Until then: "can't check automatically" + links to the carrier's directory page and Plan Finder. | **Needs Thomas:** (1) decide to register; (2) create the Aetna developer-portal account and app in his name and accept Aetna's terms (counsel via Q9 if unsure); (3) put the two values in the server and coding-host `.env` himself (never in chat or git). Optional: approve a request to Aetna for unauthenticated access citing CMS's 2026-06-24 memo (separate, approval-gated message). | Verified 2026-11-21: Aetna's `/metadata` is public, but `Practitioner` and `InsurancePlan` return 401 "Invalid client id or secret". CMS's 2026-06-24 HPMS memo says CMS must reach the endpoint without client registration, but that binds CMS's access, not ours. Registration is an account and terms decision only Thomas can make. |
+| Q15 | Which carriers' directories first | **All 16 Maricopa carriers get an entry** (Thomas: "all carriers in Maricopa must in"); order: the 5 live public APIs (Humana, UHC done; add Devoted, Wellcare/Centene, Molina), then keyed ones as Thomas registers (Aetna first), then re-check the 6 "not found/broken" monthly. A coverage check fails if any Maricopa MA contract has no entry. | Resolved (proposed by Philip, pending Thomas sign-off) | Carrier list from the CMS CY2027 Landscape (16 parent orgs, 101 plan segments); endpoint checks 2026-11-21 (v0.5 B5.2 with sources). |
+| Q16 | Dental in the yearly total | **No.** The dental-use preset (v0.5 B4) is a separate, labelled estimate line; never in the yearly total, deltas or ranking. | Resolved (proposed by Philip, pending Thomas sign-off) | No CMS price data for dental work; mixing assumed prices into CMS-based totals would make rankings depend on unverified numbers. |
+| Q17 | Carrier SB/EOC fetching | **Links only (WP14, v0.5 B3), after Thomas enrolls (Nov 24).** CMS PBP Section A web addresses for every plan, verified carrier PDFs where a carrier's robots.txt and terms allow, Plan Finder links; never numbers from documents; skip any carrier whose terms forbid automated access. | Resolved (proposed by Philip, pending Thomas sign-off) | Verified 2026-11-21: PBP Section A has carrier website, formulary and pharmacy URLs for all 101 Maricopa plan segments and provider-directory URLs for all 92 MA segments. |
+| Q18 | Baseline PDP choice | **Lowest estimated cost for the user's drugs** (premium + drug midpoint), lowest premium when no drugs; tie → lower worst case → plan_key | Resolved (proposed by Philip, pending Thomas sign-off). Implemented in WP11 (B2 test). | Same formula for every PDP keeps neutrality; the user can still pick any PDP in the Original Medicare rows. |
+| Q19 | Part A premium in the baseline | **$0** with the note "Part A premium assumed $0 (most people with 40+ quarters …)"; $328 / $597 otherwise | Resolved (proposed by Philip, pending Thomas sign-off). Implemented (`cost/baseline.py` `PART_A_NOTE`). | 2027 amounts **V** (Federal Register 2026-23603). An intake toggle for fewer quarters can come later. |
+| Q20 | Medigap default in the baseline | **None** (worst case "no limit"); the user may pick G / N / HDG and enter a quote | Resolved (proposed by Philip, pending Thomas sign-off). Implemented in WP11. | No CMS Medigap premium data; showing a Medigap plan without a real quote would invent a number. |
+| Q21 | Baseline in the ranked list | **Pinned, unranked** (`rank=null`), `delta_vs_baseline_cents` on every row | Resolved (proposed by Philip, pending Thomas sign-off). Implemented in WP11 (B7 test). | Keeps the v0.3 ranking unchanged and makes the "standard" comparison explicit. |
+
+## v0.5 open decisions (2026-11-21, `DESIGN-v0.5-ADDENDUM.md`)
+
+| # | Decision | Proposal | Status |
 |---|---|---|---|
-| Q12 | Merge `fix/drug-search` (`19111e0`) into `feat/mvp-wp2-8` and push | **Ask Thomas** (nothing is pushed) | Fixes comment 1; ml3090 retest steps in addendum A2.3 |
-| Q13 | Doctor effect on results | **Badges only**; optional filter "only plans that list my must-keep doctors" drops only `not_listed` | Directory data can be stale; `unknown` never drops |
-| Q14 | Register apps with carriers whose directory needs a key (Aetna first) | **Not at MVP**; show "can't check automatically" | Registration is Thomas's account/terms decision |
-| Q15 | Which carriers' directories first | **UnitedHealthcare, Humana** (public, checked 2026-11-19), then the largest others in Maricopa | – |
-| Q16 | Dental in the yearly total | **No** (separate line only when the user picks a dental-use preset) | No CMS dental price data; assumed amounts would be U |
-| Q17 | Carrier SB/EOC fetching | **Links only, after Thomas enrolls (WP14)**; no number extraction; stop for any carrier whose terms forbid automated access | CMS PBP stays the only source for numbers |
-| Q18 | Baseline PDP choice | **Lowest estimated cost for the user's drugs** (premium + drugs); lowest premium when no drugs | Alternative: user picks |
-| Q19 | Part A premium in the baseline | **$0** (40+ quarters) with a note | $328 / $597 otherwise |
-| Q20 | Medigap default in the baseline | **None** (no cap shown); user may pick G / N / HDG and enter a quote | No CMS Medigap premium data |
-| Q21 | Baseline in the ranked list | **Pinned, unranked** (`rank=null`), deltas shown on MA rows | Keeps the v0.3 ranking unchanged |
+| Q22 | Source for the dental-use preset's assumed prices (v0.5 B4.3) | WP17 finds a public, citable per-service source for the Phoenix area (candidate: FAIR Health Consumer); until Thomas approves it, the preset runs in coverage-only mode (no dollar estimates) | **Needs Thomas** to approve the source once WP17 proposes it |
+
+## Status of earlier items (2026-11-21)
+
+- **Q9 legal review before the Nov 25 launch:** now a work package with a counsel packet and a Mon Nov 24, 5 PM MST
+  deadline (v0.5 addendum B10, WP23). **Needs Thomas** to choose and engage counsel and make the go/no-go call.
+- **Q10 default session mode:** no longer a default Thomas may change. No-save is a hard requirement (v0.5 B2, WP16).

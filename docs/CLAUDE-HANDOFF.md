@@ -3,6 +3,17 @@
 **Authority:** the signed-off design v0.3 in `docs/design/`, signed off by Thomas on 2026-11-12 with the no-save addition. Where this brief and `docs/design/*` disagree, ask Thomas.
 **Owner and approver:** Thomas Choi. **Architect and reviewer:** Philip. All dates and times are MST (America/Phoenix).
 
+## 0. Repo rules from Thomas (2026-11-21), apply to every work package
+- **R-A.** `README.md` does not track detailed configuration (unless correcting wrong content). Put env variables,
+  make targets and operator steps in a design document, a report (`qa/`) or `docs/OPERATION.md`, and link them.
+- **R-B.** When a task or work package is done, add a `docs/CHANGELOG.md` entry with **When** (date and time,
+  America/Phoenix MST), **Who** (your name, e.g. "Claude (coding worker)"), **Reference** (the document and section the
+  task came from, e.g. "WP16 in `docs/design/IMPLEMENTATION-PLAN.md`; design v0.5 B2") and **What** (one bullet per
+  item, documentation changes included).
+- Current work: the v0.5 work packages (WP14, WP16–WP20) in `docs/design/IMPLEMENTATION-PLAN.md`, designed in
+  `docs/design/DESIGN-v0.5-ADDENDUM.md` (ready for Thomas's sign-off). Start each in Plan mode; Auto only after Thomas
+  approves. WP21 (deploy), WP22 (ml3090 checks) and WP23 (legal review) are not coding tasks for the worker.
+
 ## 1. Workflow (Thomas's process)
 1. **Read** `docs/design/README.md`, `DESIGN.md`, `IMPLEMENTATION-PLAN.md`, `OPEN-QUESTIONS.md` and `HUD-API-SETUP.md`, then scan the repository.
 2. **Stay in Plan mode.** Ask Thomas every clarifying or blocking question about the design in one batch. Then propose a plan that follows the work packages WP0–WP8, in MVP order.
@@ -16,7 +27,7 @@
 - **Commit only** after a commit signal from Philip or Thomas.
 - **Never** commit secrets, `.env*` (other than `.env.example`), API keys, tokens, real user data or PHI, or raw CMS downloads. Run `pre-commit` (with gitleaks) before every proposed commit.
 - **Never read** `.env` files on the host, and never print tokens. Use `.env.example` placeholders.
-- **Do not change `LICENSE`**, which is GPL-3.0 from Thomas, or the existing `README.md` content without approval. Appending a short "Docs" section to `README.md` is OK only if Thomas agrees.
+- **Do not change `LICENSE`**, which is GPL-3.0 from Thomas. Change `README.md` only to correct wrong content or when a work package says so, and follow rule R-A (no detailed configuration in README).
 - **Stop and ask** when:
   - a CMS file's shape differs from the design, or a PBP field mapping is ambiguous;
   - legal, compliance or disclaimer wording comes up;

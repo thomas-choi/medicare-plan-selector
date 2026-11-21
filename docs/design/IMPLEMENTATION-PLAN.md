@@ -1,6 +1,7 @@
 # Implementation Plan v0.3: Medicare Plan Selector
 
-Status: **Signed off by Thomas 2026-11-12 with the no-save addition.**
+Status: **Signed off by Thomas 2026-11-12 with the no-save addition** (v0.3 part). The "v0.4 work packages" and "v0.5 work
+packages" sections at the end are **ready for Thomas's sign-off** (2026-11-21).
 
 This plan is written for the Claude Code worker.
 
@@ -148,22 +149,23 @@ Each package is PR-sized, with tests first. A `docs/CHANGELOG.md` entry is requi
 
 ## v0.4 work packages (Thomas's test comments 2026-11-19; design in `DESIGN-v0.4-ADDENDUM.md`)
 
-Status (2026-11-20): WP9–WP13 and WP15 implemented; `fix/drug-search` holds all of them (WP10–WP13 came from
-`feat/v0.4`, merged with the QA branch `qa/v0.4-3306-regression`), and `feat/v0.4` is fast-forwarded to it. Tests use
-this machine's MySQL only; `192.168.0.216` is live data (addendum A10.3; R6 withdrawn). WP14 not started. See `docs/CHANGELOG.md`. Same rules as
-above: cumulative tests, the worker never pushes, merges, tags or deploys.
-
-Remaining: WP14 after enrollment (Nov 24).
+Status (2026-11-21): **WP9–WP13 and WP15 are done** and on branch `fix/drug-search` at `df85aba` (pushed). That branch
+contains every other branch (`feat/mvp`, `feat/mvp-wp2-8`, `feat/v0.4`, `qa/v0.4-3306-regression`); it is **not yet
+merged into `main`** (`254266a`, OPEN-QUESTIONS Q12, needs Thomas). Tests use this machine's MySQL only;
+`192.168.0.216` is live data (addendum A10.3; R6 replaced). **WP14 is not started**; it is redesigned in the v0.5
+addendum B3 and listed with the v0.5 work packages below. Last recorded result: `make test` green, 393 backend + 43
+Vitest (`a3ce1d1`, 2026-11-20). See `docs/CHANGELOG.md`. Same rules as above: cumulative tests, the worker never
+pushes, merges, tags or deploys.
 
 | WP | Scope | Size | Depends on |
 |---|---|---|---|
-| **WP9** (done, local) | Drug search: `RxNavClient.find` (exact → ingredient → approximate), ranking, `matched_as`/`how` on `GET /api/drugs`, 4 s/8 s timeouts, 0.1 s spacing; intake states (Searching…, found, fallback, empty, error), Enter searches | S | – |
-| **WP10** (done, local) | 2027 Medicare parameters: `medicare_params(plan_year PK, part_b_premium_cents, part_b_deductible_cents, part_b_coins_pct, part_a_deductible_cents, part_a_day61_cents, part_a_lifetime_cents, snf_day21_cents, medigap_hd_deductible_cents, src_ref)`; Alembic `0004` (`0003` was taken); seeded from `sources/2027.yaml` (values A5.2, cited); `CostParams` reads it; remove "2026 placeholder" notes | S | – |
-| **WP11** (done, local) | Pinned baseline: `cost/baseline.py` (`build_baseline`), `cost/medigap.py` (G, N, HDG rules, premium optional), profile `medigap`, `delta_vs_baseline_cents`; `compare_plans` returns `baseline`; Canvas pins the row and side-by-side column; export includes it | M | WP10 |
-| **WP12** (done, local) | Dental: parser `ingest/parsers/pbp_dental.py` for `pbp_b16_dental.txt`, `plan_dental` table (Alembic `0005`), fixture sample, validation (golden H0028_028_0 = $500/yr shared); `GET /api/plans/{plan_key}/benefits`; tool `get_plan_benefits`; Dental column, side-by-side section, must-haves; optional dental-use preset behind a flag | M | – |
-| **WP13** (done, local) | Doctors: intake NPI pick via `GET /api/providers` with `must_keep`; `network.py` `DirectoryChecker` (Plan-Net FHIR), `sources/directories.yaml` seed (UHC, Humana first), `selector directories sync`, `insurance_plan_map` (Alembic `0006`); CMS opt-out check for the baseline; `POST /api/providers/network`; tool `check_provider_network`; policy/validator change (listing status only); badges + optional filter/weight | L | WP11 (baseline badge) |
-| **WP14** (optional) | Carrier documents: `selector docs fetch` (robots check, 1 req/5 s/host, PDF only, ≤15 MB, sha256, H-number check), `plan_document` table, links in side-by-side; no value extraction | M | – |
-| **WP15** (done, local) | Test/dev Redis is app-local (addendum A10). Decouple Redis from the MySQL host in `backend/tests/conftest.py`, `scripts/devdb.sh` and the Makefile (part already in `7c062c4`); document in `.env.example` and `docs/OPERATION.md`, correct `README.md`. `docker-compose.yml` / `docker-compose.prod.yml`: comments only (no functional change required). Readiness (`/api/ready`) is unchanged. Owner: Claude coding worker on ml3090; review: Philip. No push, merge or deploy without Thomas's approval | S | – |
+| **WP9** (done) | Drug search: `RxNavClient.find` (exact → ingredient → approximate), ranking, `matched_as`/`how` on `GET /api/drugs`, 4 s/8 s timeouts, 0.1 s spacing; intake states (Searching…, found, fallback, empty, error), Enter searches | S | – |
+| **WP10** (done) | 2027 Medicare parameters: `medicare_params(plan_year PK, part_b_premium_cents, part_b_deductible_cents, part_b_coins_pct, part_a_deductible_cents, part_a_day61_cents, part_a_lifetime_cents, snf_day21_cents, medigap_hd_deductible_cents, src_ref)`; Alembic `0004` (`0003` was taken); seeded from `sources/2027.yaml` (values A5.2, cited); `CostParams` reads it; remove "2026 placeholder" notes | S | – |
+| **WP11** (done) | Pinned baseline: `cost/baseline.py` (`build_baseline`), `cost/medigap.py` (G, N, HDG rules, premium optional), profile `medigap`, `delta_vs_baseline_cents`; `compare_plans` returns `baseline`; Canvas pins the row and side-by-side column; export includes it | M | WP10 |
+| **WP12** (done) | Dental: parser `ingest/parsers/pbp_dental.py` for `pbp_b16_dental.txt`, `plan_dental` table (Alembic `0005`), fixture sample, validation (golden H0028_028_0 = $500/yr shared); `GET /api/plans/{plan_key}/benefits`; tool `get_plan_benefits`; Dental column, side-by-side section, must-haves; optional dental-use preset (not built; now WP17, design v0.5 B4) | M | – |
+| **WP13** (done) | Doctors: intake NPI pick via `GET /api/providers` with `must_keep`; `network.py` `DirectoryChecker` (Plan-Net FHIR), `sources/directories.yaml` seed (UHC, Humana first), `selector directories sync`, `insurance_plan_map` (Alembic `0006`); CMS opt-out check for the baseline; `POST /api/providers/network`; tool `check_provider_network`; policy/validator change (listing status only); badges + optional filter/weight | L | WP11 (baseline badge) |
+| **WP14** (not started; superseded by the v0.5 row below) | Carrier documents: see "v0.5 work packages" (design v0.5 B3) | M | – |
+| **WP15** (done) | Test/dev Redis is app-local (addendum A10). Decouple Redis from the MySQL host in `backend/tests/conftest.py`, `scripts/devdb.sh` and the Makefile (part already in `7c062c4`); document in `.env.example` and `docs/OPERATION.md`, correct `README.md`. `docker-compose.yml` / `docker-compose.prod.yml`: comments only (no functional change required). Readiness (`/api/ready`) is unchanged. Owner: Claude coding worker on ml3090; review: Philip. No push, merge or deploy without Thomas's approval | S | – |
 
 ### v0.4 tests (added to the cumulative suite)
 
@@ -190,13 +192,52 @@ Remaining: WP14 after enrollment (Nov 24).
 | P8 | WP13 | Policy: "Dr X is in network" without a `listed` row is rejected; with one it must carry the date and "call the plan" |
 | P9 | WP13 | Baseline doctor badge: opt-out list hit → "Opted out of Medicare" |
 | P10 | WP13 | Outbound requests carry only NPI and plan IDs (respx asserts no ZIP/drug/session values) |
-| CD1 | WP14 | robots.txt disallow → `skipped_robots`, no GET |
-| CD2 | WP14 | Rate limit: ≥5 s between requests to one host (fake clock) |
-| CD3 | WP14 | Non-PDF or >15 MB → rejected; PDF without the plan's H-number → `verified=false`, not shown |
-| CD4 | WP14 | Forbidden-files hook blocks any fetched PDF from being committed |
+| CD1–CD4 | WP14 | Kept and extended to CD1–CD11 in "v0.5 tests" below (design v0.5 B3.8) |
 | R1 | WP15 | `conftest.py`: `MSP_TEST_REDIS_URL` wins; with only `MSP_TEST_MYSQL_HOST` set, `REDIS_URL` uses host `127.0.0.1` (not the MySQL host) and `MSP_TEST_REDIS_PASSWORD` when set |
 | R2 | WP15 | `devdb.sh`: remote MySQL + unset or local `REDIS_URL` → Redis is local, `COMPOSE_REDIS_URL` is not forced to the MySQL host, `DEV_DB_REMOTE=1` |
 | R3 | WP15 | `devdb.sh`: explicit remote `REDIS_URL` still means remote Redis (existing `test_devdb_remote_stack_from_env_urls` still passes) |
 | R4 | WP15 | `make test` with no `MSP_TEST_*` still uses `local-stack-up` and the local ports; `test_app_up_never_recreates_the_tmpfs_stack` still holds (`--no-recreate`, `test-backend` depends on `local-stack-up`) |
 | R5 | WP15 | Existing readiness tests unchanged (`/api/ready` still requires Redis and plan data) |
 | R6 | WP15 | `conftest.py` refuses a `MSP_TEST_MYSQL_HOST` that is not this machine (tests create and drop databases; `192.168.0.216` is live data). Replaces the withdrawn "suite green against 192.168.0.216" (Thomas, 2026-11-20) |
+
+---
+
+## v0.5 work packages (Thomas's assignment 2026-11-21; design in `DESIGN-v0.5-ADDENDUM.md`)
+
+Status (2026-11-21): **designed, ready for Thomas's sign-off; nothing implemented.** Owner of every coding package: the
+Claude coding worker on ml3090 (Plan mode first, Auto after Thomas approves), **reviewed by Philip**. Same rules as above:
+cumulative regression tests, the worker never pushes, merges, tags or deploys, commits only on a signal. Every finished
+package gets a `docs/CHANGELOG.md` entry under rule R-B (When / Who / Reference / What).
+
+**Order** (today is Sat Nov 21; Thomas enrolls by Tue Nov 24; public launch Wed Nov 25):
+1. Before the launch: **WP16** → **WP19** → **WP20**, with **WP22** (Thomas on ml3090) and **WP23** (legal) in
+   parallel, then **WP21** (deploy, approval-gated) last. Q12 (merge to `main`) must be approved before WP21.
+2. As time allows before the launch, otherwise right after: **WP18** (public directories + coverage check; keyed
+   carriers after Q14).
+3. After Thomas enrolls (Nov 24): **WP17**, then **WP14**. Both are additive (no schema-breaking change), so they fit
+   the Nov 26 – Dec 7 support window if Thomas agrees.
+
+| WP | Scope | Owner | Files (main) | Acceptance tests | Size | Depends on |
+|---|---|---|---|---|---|---|
+| **WP16** | No-save is the default, enforced (B2): `default_session_mode: Literal["nosave"]`; pin `DEFAULT_SESSION_MODE: nosave` in both compose files; Consent always preselects No-save; smoke asserts it; docs | Claude worker; review Philip | `backend/selector/config.py`, `backend/tests/unit/test_config.py`, `docker-compose.yml`, `docker-compose.prod.yml`, `frontend/src/Consent.tsx`, `frontend/src/App.test.tsx`, `scripts/smoke.sh`, `backend/tests/unit/test_dev_tooling.py`, `backend/tests/nosave/test_api_nosave.py`, `.env.example`, `deploy/README.md` | NS1–NS7 (NS8 with WP20); N1–N8 still green | S | – |
+| **WP19** | Alaska and Connecticut county mapping (B6): NBER SSA–FIPS crosswalk as `XW2`, CT legacy counties + planning-region mapping, AK boroughs; empty `pending_fips_states` | Claude worker; review Philip | `backend/selector/ingest/parsers/county_xwalk.py`, `backend/selector/ingest/validate.py`, `sources/2027.yaml`, `sources/ssa_fips_overrides.csv`, `sources.lock`, `backend/selector/geo/`, fixtures, `docs/DATA-SOURCES.md` | AK1–AK4 | S–M | – |
+| **WP20** | Playwright E2E + browser half of N9 (B7) | Claude worker; review Philip | `frontend/package.json` + lock (`@playwright/test`), `frontend/playwright.config.ts`, `frontend/e2e/*.spec.ts`, `scripts/e2e_db_check.py`, `Makefile` (`e2e`), `.gitignore`, `.github/workflows/ci.yml` (optional job), `docs/OPERATION.md` | E1–E8 (E1 = NS8, E3/E4 = N9) | M | WP16 |
+| **WP22** | ml3090 drug-search checks M1–M4 (B9, from A2.3) | Thomas runs on ml3090; Philip records | `qa/ML3090-A2.3.md` (new), `docs/CHANGELOG.md` | M1–M4 recorded with output and date | XS | – |
+| **WP23** | Legal review before the Nov 25 launch (B10, Q9) | Thomas engages counsel and decides; Philip prepares the packet | `docs/design/DESIGN.md` §8.4 (outcome), disclaimer/consent text only if counsel asks | Outcome recorded by Mon Nov 24, 5 PM MST, or the invite-only fallback chosen | – | – |
+| **WP21** | Cloud deploy to med.thomas-choi.com (B8), **only after Thomas's explicit approvals** (Q12 merge/push, then deploy) | Thomas approves and holds secrets; Philip prepares and reviews; the worker never deploys | `deploy/README.md` (checklist link), `docs/OPERATION.md`, `docs/CHANGELOG.md` | D1–D10 | M | Q12, WP16, WP19, WP20, WP22, WP23 |
+| **WP18** | Directories for every Maricopa carrier (B5): `directories.yaml` entries for all 16 parent orgs; `directory_contract` (Alembic `0008`); client-credentials auth (`directory_auth.py`) with `DIRECTORY_<ID>_CLIENT_ID/_SECRET` from `.env`; per-endpoint breaker; fallback links; `selector directories coverage`; `GET /api/admin/coverage`; UI "can't check" links | Claude worker; review Philip; Aetna key from Thomas (Q14) | `sources/directories.yaml`, `backend/selector/network.py`, `backend/selector/directory_auth.py` (new), `backend/selector/directories.py`, `backend/selector/cli.py`, `backend/selector/models.py`, `backend/alembic/versions/0008_*.py`, `backend/selector/api/routes.py`, `backend/selector/api/feedback_routes.py` (admin), `backend/selector/config.py`, `.env.example`, `frontend/src/Canvas.tsx`, recorded bundles under `backend/tests/fixtures/fhir/` | DIR1–DIR11; P6–P10 still green | L | WP13 (done) |
+| **WP17** | Dental-use preset (B4): parser adds visit limits, auth/referral; `benefits/dental_use.py`; presets in profile, compare, benefits endpoint and tool; Intake select + Canvas line + side-by-side breakdown; coverage-only mode until Q22 | Claude worker; review Philip | `backend/selector/ingest/parsers/pbp_dental.py`, `backend/selector/benefits/dental_use.py` (new), `backend/selector/profile.py`, `backend/selector/api/routes.py`, `backend/selector/agent/tools.py`, `backend/selector/agent/validator.py`, `sources/2027.yaml` (`dental_use_assumptions`), `frontend/src/Intake.tsx`, `frontend/src/Canvas.tsx`, `frontend/src/exportMd.ts`, b16 fixture | DU1–DU12; DN1–DN5 and B7 still green | M | WP12 (done) |
+| **WP14** | Carrier documents (B3): PBP Section A parser (T1), `plan_document` + `carrier_doc_source` (Alembic `0007`), `sources/carrier_documents.yaml`, `selector docs fetch / verify / report`, `GET /api/plans/{plan_key}/documents`, compare `documents[]`, Canvas popover + side-by-side + export, tool `get_plan_documents`, cron/make targets | Claude worker; review Philip | `backend/selector/ingest/parsers/pbp_section_a.py` (new), `backend/selector/documents.py` (new), `backend/selector/docs_fetch.py` (new), `backend/selector/cli.py`, `backend/selector/models.py`, `backend/alembic/versions/0007_*.py`, `backend/selector/api/routes.py`, `backend/selector/agent/tools.py`, `sources/carrier_documents.yaml` (new), `sources/2027.yaml` (Section A member), `frontend/src/Canvas.tsx`, `frontend/src/exportMd.ts`, `Makefile`, `docs/OPERATION.md` | CD1–CD11 | M | after Nov 24 (Q17) |
+
+### v0.5 tests (added to the cumulative suite)
+
+| IDs | WP | Where defined |
+|---|---|---|
+| NS1–NS8 | WP16 (NS8 in WP20) | design v0.5 B2.5 |
+| CD1–CD11 | WP14 | design v0.5 B3.8 |
+| DU1–DU12 | WP17 | design v0.5 B4.6 |
+| DIR1–DIR11 | WP18 | design v0.5 B5.7 |
+| AK1–AK4 | WP19 | design v0.5 B6 |
+| E1–E8 | WP20 | design v0.5 B7 |
+| D1–D10 (checklist) | WP21 | design v0.5 B8 |
+| M1–M4 (operator checks) | WP22 | design v0.5 B9 |

@@ -339,3 +339,48 @@ original form. Branch names in headings are where the work was first committed; 
     README correction, `.env.example` and Makefile comments: same rule.
   - `qa/QA-REPORT-3306.md`: ruling section (this test mode is withdrawn).
   - Live server check after the earlier probe/run: only `msp` exists, still at `0006`; nothing left behind.
+
+## Design v0.5 — outstanding items, repo rules and paperwork cleanup
+- **When:** 2026-11-21 01:00 MST
+- **Who:** Philip (team lead and architect)
+- **Reference:** Thomas's task assignment of 2026-11-21 (chat): "Design/Plan to add WP14, no-save is default,
+  Dental-use preset, add doctor directory including Aetna, all carriers in Maricopa must in, try all Q12–Q21 …
+  cleanup the paperwork", plus his two repo rules. Source items: `docs/design/OPEN-QUESTIONS.md` Q9, Q10, Q12–Q21;
+  `docs/design/IMPLEMENTATION-PLAN.md` WP12 (dental-use preset), WP14, N9, M4/Nov 18 milestones;
+  `docs/design/DESIGN-v0.4-ADDENDUM.md` A2.3, A3.2 (Aetna), A4.4 (OD-16), A4.5 (WP14), A7, A8, A9;
+  `sources/2027.yaml` `pending_fips_states`.
+- **What:**
+  - **Repo rules R-A / R-B** recorded in `docs/design/DESIGN-v0.5-ADDENDUM.md` B0.1, `docs/CONTRIBUTING.md` (new
+    "Repository rules" section) and `docs/CLAUDE-HANDOFF.md` (new §0; README rule aligned with R-A).
+  - **New `docs/design/DESIGN-v0.5-ADDENDUM.md`** (B0–B13, 12 Mermaid diagrams, all rendered with mmdc):
+    - B2 No-save default as a hard requirement: code verified; gaps G1–G5 (env accepts `saved`, prod compose not
+      pinned, consent honours a Saved default, smoke doesn't check, deploy docs silent); tests NS1–NS8.
+    - B3 WP14 carrier documents: URL tiers (PBP Section A, curated verified PDFs, Plan Finder), `plan_document` ER
+      (Alembic `0007`), `selector docs fetch / verify / report` with link-health checks, API, UI, tool; no numbers from
+      carrier documents.
+    - B4 dental-use preset (OD-16): five presets, PBP b16 visit limits/copays/coinsurance/maximums, coverage-only mode
+      until a cited price source is approved (Q22).
+    - B5 directories: all 16 Maricopa 2027 parent organizations from the CMS Landscape with each one's Provider
+      Directory API status checked 2026-11-21 (5 live, 5 need a key incl. Aetna, 6 none/broken); `directories.yaml`
+      spec; `directory_contract` ER (Alembic `0008`); Aetna registration and key handling; breaker/fallback; coverage
+      check.
+    - B6 Alaska/Connecticut county mapping; B7 Playwright E2E + N9 browser half; B8 med.thomas-choi.com deploy
+      checklist (approval-gated); B9 ml3090 A2.3 checks; B10 Q9 legal review before Nov 25; B11 API reference; B12
+      sources S18–S28; B13 work-package index.
+  - `docs/design/IMPLEMENTATION-PLAN.md`: header and v0.4 status line made accurate (done, on `fix/drug-search`, not
+    merged to `main`); "(done, local)" labels fixed; WP12/WP14 rows point to v0.5; new "v0.5 work packages" section
+    (WP14, WP16–WP23 with owner, files, acceptance tests, order) and the v0.5 test index.
+  - `docs/design/OPEN-QUESTIONS.md`: Q12–Q21 each with a resolution, status and rationale/research (Q12 is now "merge
+    `fix/drug-search` into `main`"; Q12 and Q14 need Thomas); new Q22; status notes for Q9 and Q10.
+  - `docs/design/DESIGN-v0.4-ADDENDUM.md`: status "Ready for Thomas's sign-off"; base line fixed (written against
+    `feat/mvp-wp2-8` `10ee306`, now all on `fix/drug-search` `df85aba`); A1 changelog rows (WP15 done, 2026-11-21
+    row); A7 says WP15 is done; A8 Q12 targets `main`; A9 S14 dataset id recorded; pointers from A3.2, A4.4 and A4.5 to
+    v0.5; "local branch" wording fixed.
+  - `docs/design/DESIGN.md`: status names both addenda; §5.0 lists migrations `0004`–`0008`; §8.1 and §8.5 say
+    No-save is fixed (v0.5 B2).
+  - `docs/design/README.md`: status (both addenda ready for sign-off, code branch), v0.5 row, file list.
+  - `docs/design/CHANGES-FROM-v0.3.md`: status and "fixed locally" wording; new `docs/design/CHANGES-FROM-v0.4.md`.
+  - Earlier commit `6b9e62c` (same task): `README.md` trimmed under rule R-A with the configuration moved to
+    `docs/OPERATION.md`; `docs/CHANGELOG.md` duplicate QA entry removed, diagram-commit entry added, "local branch"
+    wording fixed.
+  - No code, compose, Makefile, test, `sources/*.yaml` or `LICENSE` changes. Nothing pushed, merged or tagged.
