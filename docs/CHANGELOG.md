@@ -415,3 +415,44 @@ original form. Branch names in headings are where the work was first committed; 
     and `make smoke` against a running app must print `ok  GET /api/config`. Not verified here: the production
     stack on the server (WP21).
 
+## WP19 — Alaska and Connecticut county mapping
+- **When:** 2026-11-21 02:15 MST
+- **Who:** Claude (Claude Opus 5.5, coding worker)
+- **Reference:** WP19 in `docs/design/IMPLEMENTATION-PLAN.md` § "v0.5 work packages"; design v0.5 B6 (tests AK1–AK4)
+  in `docs/design/DESIGN-v0.5-ADDENDUM.md`; `sources/2027.yaml` `pending_fips_states` ("fix before public launch",
+  2026-11-12)
+- **What:**
+  - New source **`XW3`** (NBER SSA→FIPS crosswalk 2026; the design calls it "XW2", but that id was already the Census
+    county list) in `sources/2027.yaml`, pinned in `sources.lock` (sha256 `8c2c6ec0…2207d`, 172,531 bytes). Used only for
+    SSA codes missing from XW1: `county_xwalk.parse_nber()` refuses a missing column or an SSA code with two FIPS.
+    Status `crosswalk_nber`.
+  - `sources/ssa_fips_overrides.csv`: the 8 Connecticut legacy SSA counties → FIPS 09001–09015 (cited to Census 2020).
+    Also 9 **retired** Alaska SSA areas with a blank FIPS (02030, 02040, 02080, 02120, 02201, 02232, 02250, 02261
+    Valdez-Cordova, 02280), each with a reason and citation. A blank FIPS in an override means status `retired`; the
+    Census check accepts it only with a reason and citation.
+  - New `backend/selector/geo/ct_regions.py`: Census CT planning region (09110–09190) → legacy counties, from S27
+    (`ct_cou_to_cousub_crosswalk.xlsx`, sha256 `f70c3ce6…c238a`, town counts per county). `geo/resolve.py` maps a
+    planning-region FIPS from the cache or the HUD API to its legacy county. When a region spans several, it returns
+    them all plus a note, and the existing county picker appears. The state picker hides `retired` areas.
+  - `ingest/load.py` reads XW3. `ingest/validate.py`: any county left `pending` outside `pending_fips_states` fails
+    the ingest. `sources/2027.yaml`: `pending_fips_states: []`.
+  - Real 2027 files (checked offline on this machine, no database write): 3,279 SSA codes → 3,185 crosswalk, 55
+    override, 30 crosswalk_nber, 9 retired, **0 pending**. All 30 Alaska FIPS that NBER gives are in Census 2020; every
+    override passes the Census check. The 2027 Landscape has Alaska only as "All Counties" PDPs and Connecticut by its
+    8 legacy counties.
+  - Fixtures: AK/CT rows in `geo.txt` and `census_county.txt` (copied from the real files), new `nber_xwalk.csv`
+    (12 real rows), `MANIFEST.json`, `devdata.py` layout. Dev ZIPs 99686 (Chugach), 99573 (Copper River), 06103
+    (planning region 09110) and 06510 (09170) in `tests/fixtures/hud/zip_county_dev.csv`.
+  - Tests: new `tests/unit/ingest/test_ak_ct_counties.py` (AK1, AK3, AK2 table checks, AK4 spec, NBER parser,
+    override check, precedence). `tests/integration/test_ingest.py`: statuses and FIPS after ingest replace the old
+    "02013 is pending" assertion; AK4 fails ingest on an unknown SSA code. `tests/integration/test_dev_data.py`: AK2
+    (multi-county region → picker and note, single-county region, HUD API path), AK3, picker hides retired areas.
+  - Docs: `docs/DATA-SOURCES.md` (XW3, S27, AK/CT note), addendum B6 "Implemented" note listing the differences
+    (XW3 name, `retired` status, the CT table in code), `IMPLEMENTATION-PLAN.md` WP19 row and status.
+  - Result: `make test` green, **420 backend + 45 Vitest** (was 406 + 45); `pre-commit` passed.
+  - For QA: (1) full `make ingest` on a **local** test database with the real files. XW3 downloads once, or use
+    `--offline` with `data/raw/2027/XW3/ssa_fips_state_county_2026.csv`. Expect validation to pass with 0 pending.
+    Never run this against 192.168.0.216. (2) Unverified (**U**): whether HUD's current API and files return CT
+    planning-region codes or legacy county codes; both are handled. (3) Philip to review the `retired` status and
+    the XW3 naming (addendum B6 note).
+

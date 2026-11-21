@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import shutil
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -13,7 +14,7 @@ from sqlalchemy import Engine, create_engine, text
 
 from selector.ingest.run import run_ingest
 from selector.ingest.validate import ValidationFailed
-from tests.cms_fixtures import SOURCES_DIR, fixture_fetched
+from tests.cms_fixtures import FIX, SOURCES_DIR, fixture_fetched
 
 pytestmark = pytest.mark.infra
 
@@ -56,7 +57,13 @@ def test_golden_row_and_counts(ingest_engine: Engine, tmp_path: Path) -> None:
             n = c.execute(text("SELECT COUNT(*) FROM plan_county WHERE plan_year=2027 AND plan_key=:k"), {"k": key})
             assert n.scalar() == 15, key
         status = dict(c.execute(text("SELECT ssa_code, fips_status FROM county")).all())
-        assert status["02013"] == "pending" and status["03060"] == "crosswalk"
+        assert status["03060"] == "crosswalk"
+        # AK1 (DESIGN v0.5 B6): Alaska via NBER (XW3), Connecticut via cited overrides, Valdez-Cordova retired.
+        assert status["02013"] == "crosswalk_nber" and status["07010"] == "override" and status["02261"] == "retired"
+        assert "pending" not in status.values()
+        q = "SELECT ssa_code, fips FROM county WHERE state_name IN ('Alaska','Connecticut')"
+        fips = dict(c.execute(text(q)).all())
+        assert fips["02270"] == "02158" and fips["07010"] == "09003" and fips["02261"] is None
 
 
 def test_rerun_makes_no_changes(ingest_engine: Engine, tmp_path: Path) -> None:
@@ -92,6 +99,17 @@ def test_failed_validation_rolls_back(ingest_engine: Engine, tmp_path: Path) -> 
     with pytest.raises(ValidationFailed, match="moop_in_network_cents"):
         _ingest(ingest_engine, tmp_path, sources_dir=sd)
     assert _checksums(ingest_engine) == before
+
+
+def test_ak4_ingest_fails_when_a_new_pending_county_appears(ingest_engine: Engine, tmp_path: Path) -> None:
+    """AK4: with `pending_fips_states: []`, an SSA code no crosswalk or override knows stops the ingest."""
+    fixtures = tmp_path / "fix"
+    shutil.copytree(FIX, fixtures)
+    with (fixtures / "geo.txt").open("a") as f:
+        f.write("02999|Alaska|Nowhere Census Area|26|Alaska|34|Alaska\n")
+    with pytest.raises(ValidationFailed, match=r"1 counties with a pending SSA→FIPS mapping.*02999"):
+        run_ingest(ingest_engine, 2027, sources_dir=SOURCES_DIR, lock_path=tmp_path / "sources.lock",
+                   fetched=fixture_fetched(fixtures))  # fmt: skip
 
 
 def test_api_role_reads_plan_data(ingest_engine: Engine, tmp_path: Path, scratch_schema: dict[str, str]) -> None:

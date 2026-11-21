@@ -736,6 +736,22 @@ Design:
 4. Remove `pending_fips_states` once validation shows every AK and CT SSA code in the Landscape maps to a FIPS; the
    ingest validation keeps failing if any state other than the listed ones has a pending county.
 
+**Implemented (WP19, 2026-11-21, see `docs/CHANGELOG.md`).** Differences from the text above, for review:
+- The NBER file is source **`XW3`**, not `XW2` (`XW2` was already the Census 2020 county list). It is the 2026 file
+  (`ssa_fips_state_county_2026.csv`, sha256 `8c2c6ec0…2207d`, pinned in `sources.lock`). It maps 30 of the 39 Alaska
+  SSA codes in the S3 locator (Kusilvak SSA 02270 → FIPS 02158); it has **no** FIPS for the Connecticut SSA codes.
+- **Retired SSA areas (new status `retired`):** 9 Alaska SSA codes in the S3 locator (02030, 02040, 02080, 02120,
+  02201, 02232, 02250, 02261 Valdez-Cordova, 02280) have no FIPS county today (absent from NBER 2026 and Census 2020).
+  They get override rows with a blank FIPS and a citation, are never offered from a ZIP and are hidden from the county
+  picker. They stay in `plan_county` through the Alaska PDP region (2027 Alaska has PDPs only, "All Counties"). An
+  MA-PD row on a retired code would still fail validation.
+- Connecticut legacy SSA → FIPS rows are in `sources/ssa_fips_overrides.csv`. The planning-region → legacy-county table
+  is a Python constant (`backend/selector/geo/ct_regions.py`, from S27), because `sources/` is not in the API image.
+- Validation: besides the MA-PD check, any `pending` county outside `pending_fips_states` (now empty) fails the
+  ingest.
+- Still **U**: whether HUD's current API and files return planning-region codes for Connecticut ZIPs. Both forms are
+  handled.
+
 Tests: **AK1** every AK/CT Landscape county gets a FIPS on the fixture; **AK2** a CT ZIP whose HUD row is a planning
 region resolves to the right legacy county or offers the picker; **AK3** Chugach/Copper River ZIPs resolve; **AK4**
 `pending_fips_states` empty and validation passes; ingest fails if a new pending county appears.

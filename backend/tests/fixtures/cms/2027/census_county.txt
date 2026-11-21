@@ -1,4 +1,8 @@
 STATE|STATEFP|COUNTYFP|COUNTYNS|COUNTYNAME|CLASSFP|FUNCSTAT
+AK|02|013|01419964|Aleutians East Borough|H1|A
+AK|02|063|02804400|Chugach Census Area|H5|S
+AK|02|066|02804401|Copper River Census Area|H5|S
+AK|02|158|01419985|Kusilvak Census Area|H5|S
 AZ|04|001|00025441|Apache County|H1|A
 AZ|04|003|00025442|Cochise County|H1|A
 AZ|04|005|00025443|Coconino County|H1|A
@@ -18,6 +22,14 @@ CA|06|037|00277283|Los Angeles County|H1|A
 CA|06|059|00277294|Orange County|H1|A
 CA|06|065|00277297|Riverside County|H1|A
 CO|08|014|01945881|Broomfield County|H6|C
+CT|09|001|00212794|Fairfield County|H4|N
+CT|09|003|00212338|Hartford County|H4|N
+CT|09|005|00212796|Litchfield County|H4|N
+CT|09|007|00212797|Middlesex County|H4|N
+CT|09|009|00212798|New Haven County|H4|N
+CT|09|011|00212799|New London County|H4|N
+CT|09|013|00212668|Tolland County|H4|N
+CT|09|015|00212801|Windham County|H4|N
 SD|46|071|01265794|Jackson County|H1|A
 VA|51|005|01673675|Alleghany County|H1|A
 VA|51|019|01674818|Bedford County|H1|A

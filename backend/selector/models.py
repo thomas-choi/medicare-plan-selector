@@ -63,8 +63,9 @@ ingest_run = Table(
     Index(None, "plan_year", "source_id"),
 )
 
-# CMS plan data is keyed by SSA county code; HUD returns FIPS. `fips` is NULL where no crosswalk exists yet
-# (Alaska, Connecticut: `fips_status='pending'`). Several SSA codes can share one FIPS (e.g. Los Angeles partial).
+# CMS plan data is keyed by SSA county code; HUD returns FIPS. `fips` is NULL for retired SSA areas
+# (`fips_status='retired'`, DESIGN v0.5 B6) and for any code still `pending`. Several SSA codes can share one FIPS
+# (e.g. Los Angeles partial).
 county = Table(
     "county",
     metadata,
@@ -75,7 +76,8 @@ county = Table(
     Column("name", String(64), nullable=False),
     Column("ma_region_code", String(8)),
     Column("pdp_region_code", String(8)),
-    Column("fips_status", String(16), nullable=False),  # crosswalk | override | pending
+    # crosswalk (XW1) | crosswalk_nber (XW3) | override | retired (no FIPS today) | pending (DESIGN v0.5 B6)
+    Column("fips_status", String(16), nullable=False),
     Column("partial", Boolean, nullable=False, default=False),
     Column("src_ref", JSON, nullable=False),
     Index(None, "fips"),

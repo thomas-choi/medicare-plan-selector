@@ -56,6 +56,14 @@
       "size": 126639,
       "last_modified": "Mon, 13 Feb 2023 20:11:55 GMT",
       "members": {}
+    },
+    "XW3": {
+      "url": "https://data.nber.org/ssa-fips-state-county-crosswalk/2026/ssa_fips_state_county_2026.csv",
+      "vintage": "2026",
+      "sha256": "8c2c6ec03a355a6c53a641bea893c40299c49aca046f953b68cc312013f2207d",
+      "size": 172531,
+      "last_modified": "Tue, 15 Apr 2025 22:57:03 GMT",
+      "members": {}
     }
   }
 }

@@ -1,5 +1,9 @@
 COUNTY_CODE|STATENAME|COUNTY|MA_REGION_CODE|MA_REGION|PDP_REGION_CODE|PDP_REGION
 02013|Alaska|Aleutians East|26|Alaska|34|Alaska
+02063|Alaska|Chugach|26|Alaska|34|Alaska
+02066|Alaska|Copper River|26|Alaska|34|Alaska
+02261|Alaska|Valdez-Cordova|26|Alaska|34|Alaska
+02270|Alaska|Kusilvak|26|Alaska|34|Alaska
 03000|Arizona|Apache|21|Arizona|28|Arizona
 03010|Arizona|Cochise|21|Arizona|28|Arizona
 03020|Arizona|Coconino|21|Arizona|28|Arizona
@@ -17,3 +21,7 @@ COUNTY_CODE|STATENAME|COUNTY|MA_REGION_CODE|MA_REGION|PDP_REGION_CODE|PDP_REGION
 03130|Arizona|Yuma|21|Arizona|28|Arizona
 05200|California|Los Angeles|24|California|32|California
 05201|California|Los Angeles (Partial)|24|California|32|California
+07000|Connecticut|Fairfield|02|Central New England (Connecticut, Massachusetts, Rhode Island, and Vermont)|02|Central New England (Connecticut, Massachusetts, Rhode Island, and Vermont)
+07010|Connecticut|Hartford|02|Central New England (Connecticut, Massachusetts, Rhode Island, and Vermont)|02|Central New England (Connecticut, Massachusetts, Rhode Island, and Vermont)
+07040|Connecticut|New Haven|02|Central New England (Connecticut, Massachusetts, Rhode Island, and Vermont)|02|Central New England (Connecticut, Massachusetts, Rhode Island, and Vermont)
+07060|Connecticut|Tolland|02|Central New England (Connecticut, Massachusetts, Rhode Island, and Vermont)|02|Central New England (Connecticut, Massachusetts, Rhode Island, and Vermont)

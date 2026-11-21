@@ -68,6 +68,18 @@ def validate_year(conn: Connection, year: int, spec: dict[str, Any], oop_thresho
     if rows:
         problems.append(f"{len(rows)} MA-PD counties without FIPS outside pending states: {rows[:10]}")
 
+    # DESIGN v0.5 B6 (AK4): no county may be left without a decision. `pending` is allowed only in the listed states;
+    # a new pending county anywhere else (a new SSA code in the S3 locator) fails the ingest until it is mapped.
+    rows = conn.execute(
+        text(
+            "SELECT state_name, name, ssa_code FROM county "
+            "WHERE fips_status='pending' AND state_name NOT IN :pending ORDER BY ssa_code"
+        ).bindparams(bindparam("pending", expanding=True)),
+        {"pending": pending},
+    ).all()
+    if rows:
+        problems.append(f"{len(rows)} counties with a pending SSA→FIPS mapping: {rows[:10]}")
+
     # Part D plans need a formulary.
     n = _scalar(
         conn,

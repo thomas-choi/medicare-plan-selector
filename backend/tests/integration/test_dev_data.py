@@ -86,3 +86,57 @@ def test_hud_api_result_not_cached_when_not_allowed(api_engine: Engine, dev_load
 def test_bad_zip_rejected(api_engine: Engine) -> None:
     with api_engine.connect() as c, pytest.raises(ValueError):
         resolve_zip(c, "8500", hud=None, may_write_cache=False)
+
+
+# ---- WP19: Alaska and Connecticut (DESIGN v0.5 B6) ----
+
+
+def test_ak2_ct_zip_in_a_multi_county_planning_region_offers_the_picker(api_engine: Engine) -> None:
+    """Hartford 06103: HUD gives planning region 09110 (Capitol) → legacy Hartford and Tolland, with a note."""
+    with api_engine.connect() as c:
+        res = resolve_zip(c, "06103", hud=None, may_write_cache=False)
+    assert [(o.ssa_code, o.fips, o.name) for o in res.counties] == [
+        ("07010", "09003", "Hartford"),
+        ("07060", "09013", "Tolland"),
+    ]
+    assert res.note and "planning region" in res.note
+
+
+def test_ak2_ct_zip_in_a_single_county_planning_region_resolves(api_engine: Engine) -> None:
+    with api_engine.connect() as c:
+        res = resolve_zip(c, "06510", hud=None, may_write_cache=False)  # 09170 South Central → New Haven
+    assert [(o.ssa_code, o.fips) for o in res.counties] == [("07040", "09009")] and res.note is None
+
+
+def test_ak2_hud_api_planning_region_is_mapped_too(api_engine: Engine) -> None:
+    class Hud:
+        def zip_counties(self, z: str) -> list[ZipCounty]:
+            return [ZipCounty(z, "09110", Decimal("1"), 2026, 2)]
+
+    with api_engine.connect() as c:
+        res = resolve_zip(c, "06001", hud=Hud(), may_write_cache=False)  # type: ignore[arg-type]
+    assert res.source == "hud_api" and [o.ssa_code for o in res.counties] == ["07010", "07060"]
+
+
+def test_ak3_chugach_and_copper_river_zips_resolve(api_engine: Engine) -> None:
+    with api_engine.connect() as c:
+        valdez = resolve_zip(c, "99686", hud=None, may_write_cache=False)
+        copper = resolve_zip(c, "99573", hud=None, may_write_cache=False)
+    assert [(o.ssa_code, o.name, o.fips_status) for o in valdez.counties] == [("02063", "Chugach", "crosswalk_nber")]
+    assert [(o.ssa_code, o.name) for o in copper.counties] == [("02066", "Copper River")]
+
+
+def test_county_picker_hides_retired_ssa_areas(api_engine: Engine, dev_loaded: dict[str, str]) -> None:
+    # `county.state` comes from the Landscape; the fixture Landscape has no AK/CT plans (the real 2027 one has both),
+    # so set the abbreviations here the way a real ingest does.
+    ing = create_engine(dev_loaded["ingest"])
+    with ing.begin() as c:
+        c.execute(text("UPDATE county SET state='AK' WHERE state_name='Alaska'"))
+        c.execute(text("UPDATE county SET state='CT' WHERE state_name='Connecticut'"))
+    ing.dispose()
+    with api_engine.connect() as c:
+        ak = {o.ssa_code: o for o in counties_in_state(c, "AK")}
+        ct = [o.fips for o in counties_in_state(c, "CT")]
+    assert "02261" not in ak and {"02063", "02066", "02270"} <= set(ak)
+    assert all(o.fips for o in ak.values())
+    assert ct == ["09001", "09003", "09009", "09013"]

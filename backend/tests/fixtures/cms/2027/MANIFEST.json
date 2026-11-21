@@ -25,6 +25,11 @@
       "url": "https://www2.census.gov/geo/docs/reference/codes2020/national_county2020.txt",
       "vintage": "2020",
       "sha256": "9f6e5f6eb6ac2f5e9a36d5fd01dec77991bddc75118f748a069441a4782970d6"
+    },
+    "XW3": {
+      "url": "https://data.nber.org/ssa-fips-state-county-crosswalk/2026/ssa_fips_state_county_2026.csv",
+      "vintage": "2026",
+      "sha256": "8c2c6ec03a355a6c53a641bea893c40299c49aca046f953b68cc312013f2207d"
     }
   },
   "files": {
@@ -32,7 +37,7 @@
       "rows": 27
     },
     "geo.txt": {
-      "rows": 18
+      "rows": 26
     },
     "plan_info.txt": {
       "rows": 11
@@ -65,10 +70,13 @@
       "rows": 16
     },
     "census_county.txt": {
-      "rows": 29
+      "rows": 41
     },
     "b16.txt": {
       "rows": 10
+    },
+    "nber_xwalk.csv": {
+      "rows": 12
     }
   },
   "plans": [

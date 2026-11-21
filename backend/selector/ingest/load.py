@@ -90,11 +90,12 @@ def build_year(year: int, fetched: dict[str, Fetched], spec: dict[str, Any], ove
         d.plans.append({"plan_year": year, **p})
     plan_keys = {p["plan_key"] for p in d.plans}
 
-    # Counties (S3 geo locator + SSA→FIPS crosswalk + cited overrides).
+    # Counties (S3 geo locator + SSA→FIPS crosswalks XW1, XW3 + cited overrides; DESIGN v0.5 B6).
     xwalk = county_xwalk.parse_penetration(_read(xw1.paths["penetration"]))
+    nber = county_xwalk.parse_nber(_read(fetched["XW3"].paths["file"])) if "XW3" in fetched else {}
     overrides = county_xwalk.parse_overrides(overrides_csv.read_text())
     geo = list(spuf.parse_geo(_read(s3.paths["geo"])))
-    counties = list(county_xwalk.build_counties(geo, xwalk, overrides, s3.entry.vintage))
+    counties = list(county_xwalk.build_counties(geo, xwalk, overrides, s3.entry.vintage, nber))
     per_fips: dict[str, int] = defaultdict(int)
     for c in counties:
         c["state"] = state_abbr.get(c["state_name"])

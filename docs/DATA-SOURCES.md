@@ -18,7 +18,14 @@ agency. This project is **not affiliated with or endorsed by CMS, Medicare or an
 | S14 | CMS Opt Out Affidavits (data.cms.gov, 2026-09-01 list) | Doctors who opted out of Medicare (Original Medicare rows; only an NPI is sent) |
 | S16 | Medicare.gov Medigap benefits chart; CMS CY2027 Medigap high-deductible amount | Medigap G / N / high-deductible G rules for the baseline row |
 | XW1 | CMS MA State/County Penetration (November 2026) | SSA ↔ FIPS county codes (geography columns only) |
-| XW2 | US Census Bureau 2020 county FIPS list | Validates the hand-curated `sources/ssa_fips_overrides.csv` |
+| XW2 | US Census Bureau 2020 county FIPS list | Validates the hand-curated `sources/ssa_fips_overrides.csv` (including the 8 legacy Connecticut counties, FIPS 09001–09015) |
+| XW3 | NBER SSA to FIPS State and County Crosswalk 2026 (built from CMS files; [nber.org](https://www.nber.org/research/data/ssa-federal-information-processing-series-fips-state-and-county-crosswalk)) | SSA ↔ FIPS for codes missing from XW1, i.e. Alaska (design v0.5 B6; the design text calls it "XW2", renamed because XW2 was taken) |
+| S27 | US Census Bureau Connecticut county → planning-region crosswalk (`ct_cou_to_cousub_crosswalk.xlsx`) | Connecticut planning regions (FIPS 09110–09190, as HUD may return them) → legacy counties; the table is in `backend/selector/geo/ct_regions.py` |
+
+Alaska and Connecticut (design v0.5 B6): no county is left `pending`. Alaska maps through XW3; nine retired Alaska
+SSA areas (e.g. Valdez-Cordova, split in 2019 into Chugach and Copper River) have no FIPS county today and are listed
+in `sources/ssa_fips_overrides.csv` with a blank FIPS (status `retired`: never offered from a ZIP or in the county
+picker). Connecticut keeps the 8 legacy counties that CMS still uses.
 
 Full URLs, verification status and sha256 values are in [design/DESIGN.md §3](design/DESIGN.md) and `sources.lock`.
 

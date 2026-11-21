@@ -24,8 +24,10 @@ LAYOUT = {
            "insulin": "insulin.txt"},
     "XW1": {"penetration": "penetration.csv"},
     "XW2": {"file": "census_county.txt"},
+    "XW3": {"file": "nber_xwalk.csv"},
 }  # fmt: skip
-VINTAGE = {"S1": "202611", "S2": "2027-pbp-20261001", "S3": "20261031", "XW1": "2026-11", "XW2": "2020"}
+VINTAGE = {"S1": "202611", "S2": "2027-pbp-20261001", "S3": "20261031", "XW1": "2026-11", "XW2": "2020",
+           "XW3": "2026"}  # fmt: skip
 
 
 def fixture_fetched(root: Path) -> dict[str, Fetched]:

@@ -50,6 +50,14 @@ sources:
     fetch: file
     vintage: "2020"
 
+  XW3:
+    # Secondary SSA→FIPS crosswalk, used only for SSA codes missing from XW1 (Alaska; DESIGN v0.5 B6, S27).
+    # Named XW3 because XW2 was already the Census county list; the design text calls it "XW2".
+    title: NBER SSA to FIPS State and County Crosswalk 2026 (built from CMS rate files)
+    url: https://data.nber.org/ssa-fips-state-county-crosswalk/2026/ssa_fips_state_county_2026.csv
+    fetch: file
+    vintage: "2026"
+
 # Values entered by hand from a cited document (no machine-readable file).
 params:
   part_d:
@@ -104,5 +112,6 @@ golden:
       preventive_max_period: "year"
       comprehensive_max_shared: true
 
-# States whose SSA→FIPS mapping is pending (approved 2026-11-12; fix before public launch).
-pending_fips_states: [Alaska, Connecticut]
+# States whose SSA→FIPS mapping may stay pending. Empty since WP19 (DESIGN v0.5 B6): Alaska maps through XW3 and
+# Connecticut through sources/ssa_fips_overrides.csv; ingest fails if any county is left pending.
+pending_fips_states: []

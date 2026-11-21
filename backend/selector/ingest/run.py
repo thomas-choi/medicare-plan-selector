@@ -35,14 +35,28 @@ def load_spec(sources_dir: Path, year: int) -> dict[str, Any]:
 
 
 def check_overrides_against_census(overrides_csv: Path, census: Path) -> list[str]:
-    """Every override FIPS must exist in the Census county list (approved 'Census check')."""
+    """Every override FIPS must exist in the Census county list (approved 'Census check').
+
+    A blank FIPS marks a retired SSA area (DESIGN v0.5 B6); it must not be in use today, so it needs a reason and a
+    citation instead.
+    """
     known = set()
     for line in decode(census.read_bytes()).splitlines()[1:]:
         parts = line.split("|")
         if len(parts) > 2:
             known.add(parts[1] + parts[2])
     ov = county_xwalk.parse_overrides(overrides_csv.read_text())
-    return [f"override {s}: FIPS {r['fips']} not in Census list" for s, r in ov.items() if r["fips"] not in known]
+    problems = [
+        f"override {s}: FIPS {r['fips']} not in Census list"
+        for s, r in ov.items()
+        if r["fips"].strip() and r["fips"].strip() not in known
+    ]
+    problems += [
+        f"override {s}: retired SSA area (blank FIPS) needs a reason and a citation"
+        for s, r in ov.items()
+        if not r["fips"].strip() and not (r["reason"].strip() and r["citation"].strip())
+    ]
+    return problems
 
 
 def run_ingest(

@@ -15,6 +15,7 @@ from typing import Any
 from sqlalchemy import Connection, select
 
 from selector import models as m
+from selector.geo.ct_regions import PICK_NOTE, legacy_fips
 from selector.geo.hud import ZIP_RE, HudClient, HudError, ZipCounty, cached_zip_counties, store_zip_counties
 
 log = logging.getLogger(__name__)
@@ -51,22 +52,33 @@ class LocationResult:
 
 
 def _counties_for(conn: Connection, zc: list[ZipCounty]) -> list[CountyOption]:
+    """SSA counties for HUD rows. A Connecticut planning-region FIPS becomes its legacy county or counties
+    (DESIGN v0.5 B6); a region spanning several keeps the HUD ratio on each, since HUD does not split it."""
     out: list[CountyOption] = []
+    seen: set[str] = set()
     for z in zc:
-        rows = conn.execute(select(m.county).where(m.county.c.fips == z.fips).order_by(m.county.c.ssa_code)).mappings()
-        for r in rows:
-            out.append(
-                CountyOption(
-                    r["ssa_code"],
-                    r["fips"],
-                    r["state"],
-                    r["state_name"],
-                    r["name"],
-                    float(z.res_ratio),
-                    r["fips_status"],
+        for fips in legacy_fips(z.fips):
+            rows = conn.execute(select(m.county).where(m.county.c.fips == fips).order_by(m.county.c.ssa_code))
+            for r in rows.mappings():
+                if r["ssa_code"] in seen:
+                    continue
+                seen.add(r["ssa_code"])
+                out.append(
+                    CountyOption(
+                        r["ssa_code"],
+                        r["fips"],
+                        r["state"],
+                        r["state_name"],
+                        r["name"],
+                        float(z.res_ratio),
+                        r["fips_status"],
+                    )
                 )
-            )
     return out
+
+
+def _pick_note(zc: list[ZipCounty]) -> str | None:
+    return PICK_NOTE if any(len(legacy_fips(z.fips)) > 1 for z in zc) else None
 
 
 def resolve_zip(
@@ -80,7 +92,7 @@ def resolve_zip(
         raise ValueError("ZIP must be 5 digits")
     cached = cached_zip_counties(conn, zip_code)
     if cached:
-        return LocationResult(zip_code, _counties_for(conn, cached), "cache")
+        return LocationResult(zip_code, _counties_for(conn, cached), "cache", _pick_note(cached))
     if hud is not None:
         try:
             rows = hud.zip_counties(zip_code)
@@ -90,7 +102,7 @@ def resolve_zip(
         if rows:
             if may_write_cache:
                 store_zip_counties(conn, rows)
-            return LocationResult(zip_code, _counties_for(conn, rows), "hud_api")
+            return LocationResult(zip_code, _counties_for(conn, rows), "hud_api", _pick_note(rows))
     return LocationResult(
         zip_code,
         [],
@@ -100,9 +112,12 @@ def resolve_zip(
 
 
 def counties_in_state(conn: Connection, state: str) -> list[CountyOption]:
-    """County picker fallback: every county CMS lists for a 2-letter state code."""
+    """County picker fallback: every county CMS lists for a 2-letter state code, except retired SSA areas (no FIPS
+    county today, e.g. Alaska's Valdez-Cordova; DESIGN v0.5 B6)."""
     rows = conn.execute(
-        select(m.county).where(m.county.c.state == state.upper()).order_by(m.county.c.name, m.county.c.ssa_code)
+        select(m.county)
+        .where(m.county.c.state == state.upper(), m.county.c.fips_status != "retired")
+        .order_by(m.county.c.name, m.county.c.ssa_code)
     ).mappings()
     return [
         CountyOption(r["ssa_code"], r["fips"], r["state"], r["state_name"], r["name"], None, r["fips_status"])
