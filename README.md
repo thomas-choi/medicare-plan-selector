@@ -59,12 +59,12 @@ already holds data, e.g. from `make ingest`, is left alone. If the data is still
 of starting a UI that only says "unavailable".
 **Gotcha:** host-side targets (`ingest-dev`, `migrate`, `dev-data`, `api-dev`) read `DATABASE_URL`,
 `INGEST_DATABASE_URL`, `MIGRATOR_DATABASE_URL` and `REDIS_URL` from `.env`. There the DB URLs must point at
-`127.0.0.1:3307` (or leave them out) or at a shared MySQL, and `REDIS_URL` stays on `127.0.0.1:6380`; `mysql:3306` /
+`127.0.0.1:3307` (or leave them out) or at the live-data MySQL, and `REDIS_URL` stays on `127.0.0.1:6380`; `mysql:3306` /
 `redis:6379` only resolve inside containers, and `docker-compose.yml` sets those for the API container by itself.
 Otherwise these targets fail with "Can't connect to MySQL server on 'mysql'".
 
-**Redis is always this machine's.** MySQL may be a shared server (e.g. `192.168.0.216:3306`) for the app and for
-`make test`; Redis never moves with it. How to set that up: [docs/OPERATION.md](docs/OPERATION.md).
+**Tests use this machine's MySQL and Redis only** (they create and drop databases). The MySQL at `192.168.0.216:3306`
+holds live data and is used only by the dev app through `.env`; Redis stays local. Setup: [docs/OPERATION.md](docs/OPERATION.md).
 Open **http://127.0.0.1:8080**. From another computer either tunnel (`ssh -L 8080:127.0.0.1:8080 <host>`, then open
 the same URL locally) or, on a trusted LAN, set `MSP_WEB_BIND=<the host's LAN IP>` (e.g. `192.168.0.216`) in `.env`,
 run `make app-up`, and open `http://192.168.0.216:8080` (the UI then answers on that IP only; `0.0.0.0` = every
@@ -162,7 +162,7 @@ Details: [DESIGN §8.5](docs/design/DESIGN.md).
 - [Design v0.3](docs/design/DESIGN.md) and [design index](docs/design/README.md)
 - [Implementation plan](docs/design/IMPLEMENTATION-PLAN.md) and [open questions](docs/design/OPEN-QUESTIONS.md)
 - [HUD API setup](docs/design/HUD-API-SETUP.md) · [Deployment](deploy/README.md)
-- [Operation: dev and test data stores](docs/OPERATION.md) (local or shared MySQL, app-local Redis, `MSP_TEST_*`)
+- [Operation: dev and test data stores](docs/OPERATION.md) (tests on local MySQL, dev app on live-data MySQL, app-local Redis)
 - [Data sources and attribution](docs/DATA-SOURCES.md)
 - [Security](docs/SECURITY.md) · [Contributing](docs/CONTRIBUTING.md) · [Changelog](docs/CHANGELOG.md)
 

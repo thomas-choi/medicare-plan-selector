@@ -68,6 +68,13 @@ backend suite against the shared server to confirm 100% green including the No-s
   `Access denied for user 'msp_migrator'@'192.168.0.212'`: ml3090 only has `msp_dev_*@192.168.0.212` accounts on
   that server, and `msp_dev_migrator` has no GRANT OPTION, which the suite needs for its `msp_test_*` databases.
   The 340 MySQL passes in this report therefore used other accounts (from the secrets file above, which is not on
-  ml3090). Accounts needed for a green run: DESIGN-v0.4-ADDENDUM **A10.9**.
+  ml3090).
 - **Local stack:** `make test` green (393 backend, 43 Vitest) after WP15.
 - **Also in this round's commit:** `sources.lock` gained `last_modified` dates and one file size (no hash changes).
+
+## Ruling 2026-11-20 (Thomas): this test mode is withdrawn
+
+`192.168.0.216:3306` is for live data only; the test suite (which creates and drops databases) uses this machine's
+MySQL only. `conftest.py` now refuses a remote `MSP_TEST_MYSQL_HOST`, so a round like this one stops before touching
+the server. Equivalent coverage: `make test` on the local stack (green). The dev app still uses `192.168.0.216` for
+live data through `.env`. See DESIGN-v0.4-ADDENDUM A10.3, A10.6, A10.8 and `docs/OPERATION.md`.

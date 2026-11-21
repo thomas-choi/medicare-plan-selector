@@ -1,7 +1,7 @@
 # Medicare Plan Selector: Technical Design v0.3
 
 Repo: https://github.com/thomas-choi/medicare-plan-selector (**public**). Service: `https://med.thomas-choi.com:<MED_PUBLIC_PORT>` (**public, multi-user**).
-Status: **Signed off by Thomas 2026-11-12 with the no-save addition** (§8.5). **v0.4 addendum (draft, 2026-11-19, A10 on 2026-11-20): `DESIGN-v0.4-ADDENDUM.md`** adds the drug-search fix, doctors/network check, dental, the pinned Original Medicare + Part D baseline, and the app-local Redis / shared-MySQL test rule (A10); where they differ, the addendum wins. Defaults in OPEN-QUESTIONS are accepted unless Thomas objects. Author: Philip. Implementer: Claude Code worker. Date: 2026-11-12 (MST, America/Phoenix).
+Status: **Signed off by Thomas 2026-11-12 with the no-save addition** (§8.5). **v0.4 addendum (draft, 2026-11-19, A10 on 2026-11-20): `DESIGN-v0.4-ADDENDUM.md`** adds the drug-search fix, doctors/network check, dental, the pinned Original Medicare + Part D baseline, and the app-local Redis / local-MySQL-for-tests rule (A10); where they differ, the addendum wins. Defaults in OPEN-QUESTIONS are accepted unless Thomas objects. Author: Philip. Implementer: Claude Code worker. Date: 2026-11-12 (MST, America/Phoenix).
 
 Key dates:
 - Open Enrollment for plan year 2027 ends **Dec 7, 2026**.
@@ -592,7 +592,7 @@ The trade-off is visible in the UI: *"No-save: nothing is kept on our servers af
 - `api`: FastAPI on uvicorn, 2 workers.
 - `ingest`: one-shot job, same image.
 - `purge`: daily cron or scheduler, deletes expired saved sessions.
-- `redis`: `redis:7` with `--save "" --appendonly no`, `/data` on tmpfs, a `maxmemory` limit with `volatile-ttl` eviction, an internal network only, and a password from `.env` (`REDIS_URL`). Redis is **app-local**: it starts and stops with the app stack (dev or prod compose). A shared or remote MySQL server does not provide Redis, and pointing tests or make targets at a remote MySQL must not move Redis to that host. Details, env vars and the supported 'shared MySQL + local Redis' test mode: addendum **A10**.
+- `redis`: `redis:7` with `--save "" --appendonly no`, `/data` on tmpfs, a `maxmemory` limit with `volatile-ttl` eviction, an internal network only, and a password from `.env` (`REDIS_URL`). Redis is **app-local**: it starts and stops with the app stack (dev or prod compose). A shared or remote MySQL server does not provide Redis, and pointing make targets at a remote MySQL must not move Redis to that host (tests never use a remote MySQL). Details and env vars: addendum **A10** and `docs/OPERATION.md`.
 - `mysql`: either a container with a volume, or Thomas's existing MySQL (including a shared MySQL used from a coding host). MySQL location is independent of Redis.
 
 **Network and TLS:**
@@ -609,7 +609,7 @@ The trade-off is visible in the UI: *"No-save: nothing is kept on our servers af
 - **Releases:** the image is tagged by git SHA and recorded in `feedback.app_version`.
 - **Deploy approval:** a deploy or push happens only with Thomas's explicit approval, as in his standing workflow.
 
-**Dev and test data stores:** default `make test` uses this machine's compose MySQL (`127.0.0.1:3307`) and Redis (`127.0.0.1:6380`). Tests and host-side make targets take Redis settings independently of MySQL (`MSP_TEST_REDIS_URL`, or `MSP_TEST_REDIS_HOST` defaulting to `127.0.0.1`). A supported mode is shared MySQL (`MSP_TEST_MYSQL_HOST`) plus local Redis. `/api/ready` is unchanged: the process is not ready unless both Redis and the plan data answer. See addendum A10 and WP15; operator steps and variables: `docs/OPERATION.md`.
+**Dev and test data stores:** default `make test` uses this machine's compose MySQL (`127.0.0.1:3307`) and Redis (`127.0.0.1:6380`). Tests and host-side make targets take Redis settings independently of MySQL (`MSP_TEST_REDIS_URL`, or `MSP_TEST_REDIS_HOST` defaulting to `127.0.0.1`). Tests use this machine's MySQL only (they create and drop throwaway databases); the MySQL at `192.168.0.216` holds live data and is used only by the dev app through `.env`. `/api/ready` is unchanged: the process is not ready unless both Redis and the plan data answer. See addendum A10 and WP15; operator steps and variables: `docs/OPERATION.md`.
 
 ---
 

@@ -290,3 +290,22 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
   - `qa/QA-REPORT-3306.md`: corrected code-under-test header (`feat/v0.4` @ `7c062c4`, not `10ee306`), WP labels,
     local counts (387 backend / 43 Vitest on that code); recommendation marked superseded; follow-up section with the
     WP15 fix, the lint failure, and the 2026-11-20 re-run (0 Redis errors, 89 MySQL access-denied).
+
+## Tests use this machine's MySQL only; 192.168.0.216 is live data
+- **When:** 2026-11-20 20:58 MST
+- **Who:** Claude (Claude Opus 5.5, coding worker)
+- **Reference:** Thomas's 2026-11-20 ruling ("MySQL at 192.168.0.216 is for live data only; use local MySQL when the
+  database can be thrown away and dropped"); addendum A10.3 / A10.6 / A10.8 / A10.9; IMPLEMENTATION-PLAN R6;
+  `qa/QA-REPORT-3306.md`
+- **What:**
+  - `backend/tests/conftest.py`: `mysql_host_is_local()` + `pytest_configure` guard: pytest stops with a clear
+    message when `MSP_TEST_MYSQL_HOST` is not this machine (loopback, its name, or one of its own addresses such as
+    `MSP_DB_BIND`). Test: `test_tests_refuse_a_remote_mysql`.
+  - Addendum A10: rule "tests use this machine's MySQL only" (A10.3, diagram); shared-MySQL test mode withdrawn and
+    A10.6 rewritten as tests (local) + dev app on live data (`msp_dev_*`, never `make ingest-dev` there); A10.7
+    rows; A10.8 acceptance and results; A10.9 (shared-server test accounts) withdrawn.
+  - `IMPLEMENTATION-PLAN.md`: status, remaining order, WP15 done, R6 replaced by "conftest refuses a remote MySQL".
+  - `DESIGN.md` §10, `design/README.md`, `CHANGES-FROM-v0.3.md`, `docs/OPERATION.md` (rewritten),
+    README correction, `.env.example` and Makefile comments: same rule.
+  - `qa/QA-REPORT-3306.md`: ruling section (this test mode is withdrawn).
+  - Live server check after the earlier probe/run: only `msp` exists, still at `0006`; nothing left behind.

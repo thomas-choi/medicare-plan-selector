@@ -1,8 +1,8 @@
-"""WP15 / addendum A10.4: test Redis is app-local and never follows the (possibly shared) MySQL host."""
+"""WP15 / addendum A10.4: test Redis is app-local; tests only use this machine's MySQL."""
 
 from __future__ import annotations
 
-from tests.conftest import mysql_test_url, redis_test_url
+from tests.conftest import mysql_host_is_local, mysql_test_url, redis_test_url
 
 
 def test_r1_redis_url_wins() -> None:
@@ -27,3 +27,9 @@ def test_r1_defaults_are_the_local_stack() -> None:
     assert redis_test_url({}) == "redis://:dev-redis-pw@127.0.0.1:6380/0"
     assert mysql_test_url("migrator", {}) == "mysql+pymysql://msp_migrator:dev-migrator-pw@127.0.0.1:3307/msp"
     assert mysql_test_url("ingest", {"MSP_TEST_INGEST_PASSWORD": "s"}).startswith("mysql+pymysql://msp_ingest:s@")
+
+
+def test_tests_refuse_a_remote_mysql() -> None:
+    """Thomas 2026-11-20: throwaway test databases only on this machine's MySQL, never the live-data server."""
+    assert mysql_host_is_local("127.0.0.1") and mysql_host_is_local("localhost")
+    assert not mysql_host_is_local("192.0.2.16")

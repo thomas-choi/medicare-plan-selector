@@ -1,13 +1,16 @@
 """Shared fixtures. Infra tests target the repo's docker-compose stack (127.0.0.1:3307 MySQL, :6380 Redis).
 
-MySQL may instead be a shared server (`MSP_TEST_MYSQL_HOST`, `MSP_MYSQL_PORT`, `MSP_TEST_*_PASSWORD`). Redis is
-app-local and never follows the MySQL host (DESIGN-v0.4-ADDENDUM A10): see `redis_test_url`.
+The tests create and drop throwaway `msp_test_*` databases, so they only ever run against a MySQL on this machine
+(`MSP_TEST_MYSQL_HOST` may be one of its own LAN addresses, e.g. `MSP_DB_BIND`); a remote host such as the live-data
+server is refused (`mysql_host_is_local`). Redis is app-local too and never follows the MySQL host
+(DESIGN-v0.4-ADDENDUM A10): see `redis_test_url`.
 Tests never read a `.env` file: settings are built with `_env_file=None` and explicit values.
 """
 
 from __future__ import annotations
 
 import os
+import socket
 import subprocess
 from collections.abc import Iterator, Mapping
 from pathlib import Path
@@ -16,7 +19,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-# Dev-only passwords of the compose stack (docker-compose.yml); a shared MySQL sets its own via MSP_TEST_*_PASSWORD.
+# Dev-only passwords of the compose stack (docker-compose.yml); MSP_TEST_*_PASSWORD only if the local stack differs.
 DEV_PASSWORDS = {"migrator": "dev-migrator-pw", "ingest": "dev-ingest-pw", "api": "dev-api-pw", "redis": "dev-redis-pw"}
 
 
@@ -37,6 +40,29 @@ def redis_test_url(env: Mapping[str, str] = os.environ) -> str:
     port = env.get("MSP_REDIS_PORT") or "6380"
     password = env.get("MSP_TEST_REDIS_PASSWORD") or DEV_PASSWORDS["redis"]
     return f"redis://:{password}@{host}:{port}/0"
+
+
+def mysql_host_is_local(host: str) -> bool:
+    """True for loopback, this machine's name, or one of its own addresses (same rule as scripts/devdb.sh)."""
+    if host in ("", "localhost", "::1") or host.startswith("127."):
+        return True
+    if host == socket.gethostname():
+        return True
+    try:
+        own = subprocess.run(["hostname", "-I"], capture_output=True, text=True, timeout=5).stdout.split()  # noqa: S607
+    except (OSError, subprocess.SubprocessError):
+        own = []
+    return host in own
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    host = os.environ.get("MSP_TEST_MYSQL_HOST") or "127.0.0.1"
+    if not mysql_host_is_local(host):
+        raise pytest.UsageError(
+            f"MSP_TEST_MYSQL_HOST={host} is not this machine. The tests create and drop databases, so they only run "
+            "against this machine's MySQL (make test). Remote servers such as the live-data MySQL are never used "
+            "for tests (docs/OPERATION.md)."
+        )
 
 
 MIGRATOR_URL = mysql_test_url("migrator")

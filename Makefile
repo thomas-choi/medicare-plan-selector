@@ -31,7 +31,7 @@ DEVDB := $(LOAD_ENV) . $(CURDIR)/scripts/devdb.sh;
 
 # --no-recreate: the dev MySQL runs on tmpfs, so recreating it (compose does that whenever its config changes)
 # would silently wipe the schema and data. To apply a changed mysql/redis config: make stack-down && make stack-up.
-# When .env points the MySQL URLs at another machine (e.g. the shared MySQL on 192.168.0.216), only check that it
+# When .env points the MySQL URLs at another machine (e.g. the live-data MySQL on 192.168.0.216), only check that it
 # answers and start this machine's Redis: Redis is app-local (DESIGN-v0.4-ADDENDUM A10) unless REDIS_URL names
 # another machine on purpose.
 stack-up:  ## MySQL 8.4 (:3307) and Redis 7.4 (:6380, no persistence) for the app; local, or the remote one in .env
@@ -64,7 +64,7 @@ test-fast: frontend-deps  ## unit tests only, no Docker
 	cd frontend && $(NODE_BIN)/vitest run
 
 # Tests use the local stack on 127.0.0.1, or on MSP_DB_BIND when that publishes it on one LAN address only.
-# MSP_TEST_MYSQL_HOST may name a shared MySQL instead; Redis is set on its own and stays on this machine (A10).
+# Never a remote MySQL: conftest.py refuses one (tests drop databases). Redis is set on its own, also local (A10).
 test-backend: local-stack-up
 	@bind=$$($(LOAD_ENV) printf %s "$${MSP_DB_BIND:-}"); case "$$bind" in ""|0.0.0.0) bind=127.0.0.1;; esac; \
 	  [ -n "$${MSP_TEST_REDIS_URL:-}" ] || export MSP_TEST_REDIS_HOST="$${MSP_TEST_REDIS_HOST:-$$bind}"; \

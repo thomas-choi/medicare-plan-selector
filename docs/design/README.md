@@ -8,7 +8,7 @@
 |---|---|
 | `DESIGN.md` | Architecture, data sources, MySQL and Redis model, agent and LLM providers, feedback, privacy (including **§8.5 No-save mode**), abuse controls, compliance notes, deployment, repo layout |
 | `IMPLEMENTATION-PLAN.md` | MVP vs post-MVP, milestones (MVP Nov 17, cloud Nov 18, Thomas enrolls Nov 24, public Nov 25), work packages, cumulative regression suite including no-save N1–N9 |
-| `DESIGN-v0.4-ADDENDUM.md` | **v0.4 draft:** drug-search fix, doctors/network directory check, dental, pinned Original Medicare + Part D baseline, API changes, app-local Redis / shared-MySQL test mode (A10) |
+| `DESIGN-v0.4-ADDENDUM.md` | **v0.4 draft:** drug-search fix, doctors/network directory check, dental, pinned Original Medicare + Part D baseline, API changes, app-local Redis, tests on local MySQL only (A10) |
 | `HUD-API-SETUP.md` | HUD USPS ZIP→county API token setup |
 | `OPEN-QUESTIONS.md` | Accepted defaults, which still apply unless Thomas objects |
 | `CHANGES-FROM-v0.1.md`, `CHANGES-FROM-v0.2.md`, `CHANGES-FROM-v0.3.md` | Revision history |
