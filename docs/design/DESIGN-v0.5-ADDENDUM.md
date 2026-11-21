@@ -726,7 +726,7 @@ Findings (2026-11-21):
 Design:
 1. Add the NBER "SSA to FIPS State and County Crosswalk" for the plan year (S27,
    https://www.nber.org/research/data/ssa-federal-information-processing-series-fips-state-and-county-crosswalk, built
-   from CMS files) as a secondary crosswalk source `XW2`, pinned by sha256 in `sources.lock` like the others; used only
+   from CMS files) as a secondary crosswalk source `XW3` (`XW2` is already the Census county list), pinned by sha256 in `sources.lock` like the others; used only
    for SSA codes missing from XW1.
 2. Connecticut: map the 8 legacy SSA counties to legacy FIPS 09001–09015 (one-to-one). For ZIPs whose HUD row gives a
    planning region, map the region to its legacy county(ies) with the Census CT county-to-planning-region relationship
@@ -754,7 +754,30 @@ Design:
 
 Tests: **AK1** every AK/CT Landscape county gets a FIPS on the fixture; **AK2** a CT ZIP whose HUD row is a planning
 region resolves to the right legacy county or offers the picker; **AK3** Chugach/Copper River ZIPs resolve; **AK4**
-`pending_fips_states` empty and validation passes; ingest fails if a new pending county appears.
+`pending_fips_states` empty and validation passes; ingest fails if a new pending county appears. **AK5** a
+retired code never appears in the county picker or a ZIP lookup, is not counted as pending, and ingest fails loudly if a
+Landscape plan for the plan year still references one; **AK6** the Connecticut table in `backend/selector/geo/ct_regions.py`
+matches the Census CT county-to-planning-region relationship file kept as a test fixture.
+
+### B6.1 Changes accepted during WP19 (Philip's review, 2026-11-21)
+
+The coding worker reported three differences from the design above. All three are accepted, with these conditions:
+
+1. **NBER crosswalk is `XW3`, not `XW2`.** `XW2` was already the Census county list in `sources/2027.yaml`, so the
+   design's name clashed. The text above now says `XW3`. (Design error, corrected.)
+2. **New `retired` county status for 9 old Alaska SSA codes** (codes from boroughs/census areas that no longer exist).
+   The design did not cover them. Rules:
+   - A retired code is never offered in the county picker and never returned by a ZIP lookup.
+   - Retired codes do not count as `pending`, so the ingest validation can pass with `pending_fips_states` empty.
+   - If any Landscape plan for the plan year still references a retired code, ingest fails loudly; it never drops the
+     plan silently.
+   - Each retired code carries a source citation in `sources/ssa_fips_overrides.csv`.
+   - Test **AK5**.
+3. **Connecticut region table lives in code** at `backend/selector/geo/ct_regions.py`, not in `sources/`, because the
+   API image (`backend/Dockerfile`) copies only `selector/` and not `sources/`, and the table is needed at request time.
+   To keep the provenance that `sources/` files have:
+   - The module header cites the Census CT county-to-planning-region relationship file (S27) and its sha256.
+   - Test **AK6** compares the table to that file kept as a test fixture, so the two can't drift apart.
 
 ---
 
