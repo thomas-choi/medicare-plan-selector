@@ -384,3 +384,26 @@ original form. Branch names in headings are where the work was first committed; 
     `docs/OPERATION.md`; `docs/CHANGELOG.md` duplicate QA entry removed, diagram-commit entry added, "local branch"
     wording fixed.
   - No code, compose, Makefile, test, `sources/*.yaml` or `LICENSE` changes. Nothing pushed, merged or tagged.
+
+## Design review — WP19 differences accepted (B6.1)
+- **When:** 2026-11-21 02:55 MST
+- **Who:** Philip (team lead and architect)
+- **Reference:** the coding worker's WP19 report to Philip (via Thomas, 2026-11-21), which lists three differences from
+  `docs/design/DESIGN-v0.5-ADDENDUM.md` B6; Thomas's instruction to update the design and record the review.
+- **What:**
+  - `docs/design/DESIGN-v0.5-ADDENDUM.md` B6: the NBER crosswalk is renamed `XW2` → `XW3` (design error; `XW2` is the
+    Census county list); new tests AK5 (retired codes) and AK6 (CT table matches the Census file); new subsection
+    **B6.1 Changes accepted during WP19** recording the three accepted differences and their conditions.
+  - `docs/design/IMPLEMENTATION-PLAN.md` WP19: row updated for `XW3`, `geo/ct_regions.py` and the `retired` status;
+    acceptance tests AK1–AK4 → AK1–AK6.
+  - `docs/CHANGELOG.md`: this entry.
+  - Review message sent to the coding worker (through Thomas), in addition to the items above:
+    > Philip's review of the WP19 changes: (1) XW3 is accepted. Rename XW2 to XW3 in DESIGN-v0.5-ADDENDUM B6.
+    > (2) The retired status is accepted. Retired codes are excluded from the county picker and ZIP lookups, don't count
+    > as pending, and ingest fails if a 2027 Landscape plan still uses one. Cite each retired code in the overrides
+    > file, and add a B6 paragraph and a test for it. (3) ct_regions.py in code is accepted. Add a header citing the
+    > Census CT county-to-planning-region file with its sha256, and a test comparing the table to that file kept as a
+    > fixture. Add a CHANGELOG entry (When/Who/Reference/What). Don't push.
+  - Note for the worker: the B6 rename and the B6 paragraph asked for in items (1) and (2) are now done by this
+    design commit; the worker still owns the code, the overrides citations, the module header and tests AK5/AK6.
+  - Code not reviewed yet: the WP19 code was not on GitHub at review time.
