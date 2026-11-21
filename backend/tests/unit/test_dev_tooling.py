@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import http.server
+import json
 import os
 import re
+import shutil
 import subprocess
+import threading
+from pathlib import Path
+
+import pytest
 
 from selector.config import REPO_ROOT
 
@@ -157,3 +164,88 @@ def test_devdb_explicit_compose_urls_win() -> None:
 def test_api_healthchecks_use_readiness() -> None:
     for text_ in (COMPOSE_DEV, COMPOSE_PROD):
         assert "/api/ready" in text_ and "/api/health'" not in text_
+
+
+# ---- WP16: No-save is the default, enforced (DESIGN v0.5 B2) ----
+
+_SAVED_ENV = (
+    "DEFAULT_SESSION_MODE=saved\n"
+    "MYSQL_ROOT_PASSWORD=not-a-secret\n"
+    "REDIS_PASSWORD=not-a-secret\n"
+    "COMPOSE_DATABASE_URL=mysql+pymysql://msp_api:x@mysql:3306/msp\n"
+    "COMPOSE_REDIS_URL=redis://:x@redis:6379/0\n"
+)
+
+
+def _rendered_session_mode(tmp_path: Path, compose_file: str, *extra: str) -> dict[str, str | None]:
+    """`docker compose config` of a repo compose file next to a `.env` that asks for Saved; mode per service."""
+    docker = shutil.which("docker")
+    if not docker or subprocess.run([docker, "compose", "version"], capture_output=True).returncode:  # noqa: S603
+        pytest.skip("docker compose is not installed")
+    shutil.copy(REPO_ROOT / compose_file, tmp_path / compose_file)
+    (tmp_path / ".env").write_text(_SAVED_ENV, encoding="utf-8")
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("COMPOSE_", "DEFAULT_SESSION_MODE"))}
+    out = subprocess.run(  # noqa: S603
+        [docker, "compose", "-f", str(tmp_path / compose_file), *extra, "config", "--format", "json"],
+        cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60, check=True,
+    )  # fmt: skip
+    services = json.loads(out.stdout)["services"]
+    return {name: (svc.get("environment") or {}).get("DEFAULT_SESSION_MODE") for name, svc in services.items()}
+
+
+def test_ns2_prod_compose_pins_nosave_over_the_server_env(tmp_path: Path) -> None:
+    """NS2: a server .env with DEFAULT_SESSION_MODE=saved still renders nosave for every app container."""
+    modes = _rendered_session_mode(tmp_path, "docker-compose.prod.yml")
+    assert modes["api"] == "nosave" and modes["purge"] == "nosave"
+
+
+def test_ns3_dev_compose_pins_nosave_over_dotenv(tmp_path: Path) -> None:
+    """NS3: same for the dev compose `api` service (profile `app`)."""
+    modes = _rendered_session_mode(tmp_path, "docker-compose.yml", "--profile", "app")
+    assert modes["api"] == "nosave"
+
+
+class _StubApi(http.server.BaseHTTPRequestHandler):
+    default_mode = "nosave"
+
+    def do_GET(self) -> None:  # noqa: N802 (http.server API)
+        bodies = {
+            "/api/health": {"status": "ok"},
+            "/api/ready": {"status": "ready"},
+            "/api/config": {"plan_year": 2027, "default_mode": self.default_mode, "llm_enabled": False,
+                            "llm_provider_label": "", "modes": ["nosave", "saved"]},
+        }  # fmt: skip
+        body = bodies.get(self.path)
+        self.send_response(200 if body else 404)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(body or {}).encode())
+
+    def log_message(self, *args: object) -> None:
+        pass
+
+
+def _smoke_against(default_mode: str) -> subprocess.CompletedProcess[str]:
+    handler = type("Stub", (_StubApi,), {"default_mode": default_mode})
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        return subprocess.run(  # noqa: S603
+            [shutil.which("bash") or "/bin/bash", str(REPO_ROOT / "scripts" / "smoke.sh"), f"http://127.0.0.1:{srv.server_address[1]}"],
+            capture_output=True, text=True, timeout=60,
+        )  # fmt: skip
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_ns7_smoke_fails_when_config_defaults_to_saved() -> None:
+    """NS7: scripts/smoke.sh stops at GET /api/config when the API reports a Saved default."""
+    got = _smoke_against("saved")
+    assert got.returncode != 0
+    assert "FAIL  GET /api/config" in got.stderr and "ok  GET /api/config" not in got.stdout
+
+
+def test_ns7_smoke_accepts_a_nosave_default() -> None:
+    got = _smoke_against("nosave")  # the stub has no /api/session, so the run fails at the next step
+    assert "ok  GET /api/config" in got.stdout and "FAIL  GET /api/config" not in got.stderr

@@ -21,6 +21,8 @@ x-app: &app
     REDIS_URL: ${COMPOSE_REDIS_URL:?set COMPOSE_REDIS_URL in .env (redis:6379)}
     INGEST_DATABASE_URL: ""
     MIGRATOR_DATABASE_URL: ""
+    # DESIGN v0.5 B2 (NS-REQ): No-save is the default and wins over the server .env; any other value stops the API.
+    DEFAULT_SESSION_MODE: nosave
   depends_on:
     mysql: { condition: service_healthy }
     redis: { condition: service_healthy }
@@ -82,6 +84,8 @@ services:
       REDIS_URL: ${COMPOSE_REDIS_URL:?set COMPOSE_REDIS_URL in .env (redis:6379)}
       INGEST_DATABASE_URL: ""
       MIGRATOR_DATABASE_URL: ""
+      # Repeated here: this map replaces the x-app one for the api service (DESIGN v0.5 B2).
+      DEFAULT_SESSION_MODE: nosave
       API_WORKERS: ${API_WORKERS:-2}
 
   purge:

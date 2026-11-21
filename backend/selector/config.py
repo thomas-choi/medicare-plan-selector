@@ -11,6 +11,10 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SessionMode = Literal["nosave", "saved"]
+# DESIGN v0.5 B2 (NS-REQ): every new session starts in No-save. Saved may be offered, never defaulted, so the only
+# accepted value of DEFAULT_SESSION_MODE is "nosave"; anything else stops the API at start-up.
+DefaultSessionMode = Literal["nosave"]
+DEFAULT_SESSION_MODE_ERROR = "DEFAULT_SESSION_MODE must be nosave (DESIGN v0.5 B2)"
 # `xai` is the `openai_compat` adapter with xAI's base URL and key (see selector/agent/providers).
 LLMProvider = Literal["anthropic", "openai", "openai_compat", "xai", "ollama", "fake", ""]
 
@@ -61,6 +65,14 @@ class Settings(BaseSettings):
             return out
         return data
 
+    @field_validator("default_session_mode", mode="before")
+    @classmethod
+    def _default_mode_is_nosave(cls, v: Any) -> Any:
+        """G1 (DESIGN v0.5 B2.3): refuse `saved` (or any other value) with an error that names the rule."""
+        if isinstance(v, str) and v.strip().lower() != "nosave":
+            raise ValueError(DEFAULT_SESSION_MODE_ERROR)
+        return v.strip().lower() if isinstance(v, str) else v
+
     # Databases. Three roles: migrator (DDL), ingest (plan tables RW), api (plan RO, user tables RW).
     database_url: str = "mysql+pymysql://msp_api:dev-api-pw@127.0.0.1:3307/msp"  # dev stack (host side)
     ingest_database_url: str = ""
@@ -68,7 +80,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://:dev-redis-pw@127.0.0.1:6380/0"
 
     # Sessions and privacy (DESIGN §8.1, §8.5).
-    default_session_mode: SessionMode = "nosave"
+    default_session_mode: DefaultSessionMode = "nosave"
     retention_days: int = Field(default=30, ge=1)
     feedback_retention_days: int = Field(default=365, ge=1)
     ephemeral_idle_minutes: int = Field(default=30, ge=1)

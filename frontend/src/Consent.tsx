@@ -11,9 +11,9 @@ interface Props {
 // DESIGN §8.1/§8.5: shown before anything is saved; says what is stored, for how long, and who receives it.
 export function Consent({ config, onStart, busy, error }: Props) {
   const savedAvailable = config.modes.includes("saved");
-  const [mode, setMode] = useState<Mode>(
-    config.default_mode === "saved" && savedAvailable ? "saved" : "nosave",
-  );
+  // DESIGN v0.5 B2 (NS-REQ): always start on No-save. `config.default_mode` is not used for preselection, so
+  // neither a server setting nor a forged response can preselect Saved; the user must pick it.
+  const [mode, setMode] = useState<Mode>("nosave");
   const [accepted, setAccepted] = useState(false);
   const [phi, setPhi] = useState(false);
   const provider = config.llm_provider_label;

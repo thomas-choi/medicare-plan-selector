@@ -24,17 +24,32 @@ def test_defaults_match_accepted_open_questions() -> None:
 
 
 def test_env_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DEFAULT_SESSION_MODE", "saved")
+    monkeypatch.setenv("DEFAULT_SESSION_MODE", "nosave")
     monkeypatch.setenv("EPHEMERAL_IDLE_MINUTES", "5")
     s = Settings()
-    assert s.default_session_mode == "saved"
+    assert s.default_session_mode == "nosave"
     assert s.ephemeral_idle_minutes == 5
 
 
-def test_rejects_unknown_session_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DEFAULT_SESSION_MODE", "forever")
-    with pytest.raises(ValidationError):
-        Settings()
+@pytest.mark.parametrize("value", ["saved", "SAVED", " saved ", "forever"])
+def test_ns1_default_session_mode_other_than_nosave_stops_start_up(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    """NS1 (DESIGN v0.5 B2.5): Saved can be offered but never defaulted; the error names the rule."""
+    monkeypatch.setenv("DEFAULT_SESSION_MODE", value)
+    with pytest.raises(ValidationError, match=r"DEFAULT_SESSION_MODE must be nosave \(DESIGN v0\.5 B2\)"):
+        Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_ns1_saved_in_env_file_is_refused(tmp_path: Path) -> None:
+    env = tmp_path / ".env"
+    env.write_text("DEFAULT_SESSION_MODE=saved\n")
+    with pytest.raises(ValidationError, match="DESIGN v0.5 B2"):
+        Settings(_env_file=env)  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize("value", ["nosave", "NoSave", ""])
+def test_ns1_nosave_or_blank_means_nosave(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    monkeypatch.setenv("DEFAULT_SESSION_MODE", value)
+    assert Settings(_env_file=None).default_session_mode == "nosave"  # type: ignore[call-arg]
 
 
 def test_secrets_are_not_rendered(monkeypatch: pytest.MonkeyPatch) -> None:

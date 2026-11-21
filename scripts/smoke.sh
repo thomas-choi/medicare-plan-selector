@@ -15,7 +15,8 @@ c "$BASE/api/health" | j 'assert d["status"]=="ok", d' && pass "GET /api/health"
 ready="$(curl -sS "$BASE/api/ready" || true)"
 echo "$ready" | j 'assert d["status"]=="ready"' 2>/dev/null && pass "GET /api/ready (plan data loaded)" \
   || fail "GET /api/ready: $(echo "$ready" | j 'print(d.get("reason"), "-", d.get("hint"))' 2>/dev/null || echo "$ready")"
-c "$BASE/api/config" | j 'assert d["plan_year"]==2027 and d["default_mode"] in ("nosave","saved"); print("      llm_enabled=%s provider=%s modes=%s" % (d["llm_enabled"], d["llm_provider_label"], d["modes"]))' \
+# DESIGN v0.5 B2 (NS-REQ): the default mode must be No-save, whatever the server .env says.
+c "$BASE/api/config" | j 'assert d["plan_year"]==2027 and d["default_mode"]=="nosave", d.get("default_mode"); print("      llm_enabled=%s provider=%s modes=%s" % (d["llm_enabled"], d["llm_provider_label"], d["modes"]))' \
   && pass "GET /api/config" || fail "GET /api/config"
 c -H 'Content-Type: application/json' -X POST "$BASE/api/session" \
   -d '{"mode":"nosave","consent_version":"2026-11-17","accept_terms":true}' | j 'assert d["session"]["mode"]=="nosave"' \

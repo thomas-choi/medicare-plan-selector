@@ -116,6 +116,20 @@ def test_requests_without_session_are_rejected(fixture_db: dict[str, str]) -> No
     assert cfg["checklist"] and cfg["llm_provider_label"]
 
 
+def test_ns4_config_defaults_to_nosave_while_saved_is_offered(
+    fixture_db: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NS4 (DESIGN v0.5 B2.5): with PROFILE_ENC_KEY set, Saved is offered but the default stays No-save, and an
+    environment asking for Saved cannot change that (the settings refuse it)."""
+    c = client(fixture_db)
+    assert c.app.state.settings.profile_enc_key.get_secret_value()  # type: ignore[attr-defined]
+    cfg = c.get("/api/config").json()
+    assert cfg["modes"] == ["nosave", "saved"] and cfg["default_mode"] == "nosave"
+    monkeypatch.setenv("DEFAULT_SESSION_MODE", "saved")
+    with pytest.raises(ValueError, match="DESIGN v0.5 B2"):
+        client(fixture_db)
+
+
 def test_validation_errors_never_echo_input(fixture_db: dict[str, str]) -> None:
     c = client(fixture_db)
     start(c)

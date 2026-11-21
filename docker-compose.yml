@@ -70,6 +70,8 @@ services:
       REDIS_URL: ${COMPOSE_REDIS_URL:-redis://:dev-redis-pw@redis:6379/0}
       LLM_PROVIDER: ${LLM_PROVIDER:-fake}
       COOKIE_SECURE: "false"
+      # DESIGN v0.5 B2 (NS-REQ): No-save is the default and wins over .env; any other value stops the API.
+      DEFAULT_SESSION_MODE: nosave
     depends_on:
       mysql: { condition: service_healthy }
       redis: { condition: service_healthy }

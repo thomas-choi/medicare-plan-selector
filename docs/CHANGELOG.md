@@ -384,3 +384,34 @@ original form. Branch names in headings are where the work was first committed; 
     `docs/OPERATION.md`; `docs/CHANGELOG.md` duplicate QA entry removed, diagram-commit entry added, "local branch"
     wording fixed.
   - No code, compose, Makefile, test, `sources/*.yaml` or `LICENSE` changes. Nothing pushed, merged or tagged.
+
+## WP16 — No-save is the default, enforced
+- **When:** 2026-11-21 02:05 MST
+- **Who:** Claude (Claude Opus 5.5, coding worker)
+- **Reference:** WP16 in `docs/design/IMPLEMENTATION-PLAN.md` § "v0.5 work packages"; design v0.5 B2 (NS-REQ, gaps
+  G1–G5, tests NS1–NS7) in `docs/design/DESIGN-v0.5-ADDENDUM.md`; Thomas's chat hand-off of 2026-11-21 ("pick up the
+  coding task from `fix/drug-search`")
+- **What:**
+  - G1 `backend/selector/config.py`: `default_session_mode` is `Literal["nosave"]`; any other value (`saved` too)
+    fails `Settings()` with "DEFAULT_SESSION_MODE must be nosave (DESIGN v0.5 B2)", so the API refuses to start.
+    Blank still means the default. `SessionMode` (nosave | saved) is unchanged for sessions.
+  - G2 `docker-compose.prod.yml`: `DEFAULT_SESSION_MODE: nosave` under `x-app.environment` **and** in the `api`
+    service's own `environment` (that map replaces the anchor's, so `api` would otherwise have lost the pin);
+    `docker-compose.yml` `api`: same pin. Both win over `.env`.
+  - G3 `frontend/src/Consent.tsx`: the radio always starts on No-save; `config.default_mode` is no longer used for
+    preselection.
+  - G4 `scripts/smoke.sh`: asserts `default_mode == "nosave"`.
+  - G5 `.env.example` comment, `deploy/README.md` server `.env` table row and `docs/OPERATION.md` row: "must be
+    `nosave`; any other value stops the API".
+  - Tests: NS1 `tests/unit/test_config.py` (env and `.env` file `saved` refused with the B2 message; `nosave`/blank
+    accepted; the old test that accepted `saved` replaced); NS2/NS3 `tests/unit/test_dev_tooling.py` render both
+    compose files with `docker compose config` next to a `.env` that sets `saved` (skip if Docker is missing); NS4
+    `tests/nosave/test_api_nosave.py`; NS5/NS6 `frontend/src/App.test.tsx` (forged `default_mode: "saved"` still
+    preselects No-save; Start untouched posts `mode: "nosave"`); NS7 `test_dev_tooling.py` drives `smoke.sh`
+    against a stub API (fails on `saved`, passes the config step on `nosave`). NS8 comes with WP20 (Playwright).
+  - `docs/design/IMPLEMENTATION-PLAN.md`: v0.5 status and WP16 row marked done.
+  - Result: `make test` green, **406 backend + 45 Vitest** (was 394 + 43); `pre-commit` passed. N1–N8 still green.
+  - For QA: check NS1–NS7 above; by hand, `DEFAULT_SESSION_MODE=saved make api-dev` must stop with the B2 message,
+    and `make smoke` against a running app must print `ok  GET /api/config`. Not verified here: the production
+    stack on the server (WP21).
+

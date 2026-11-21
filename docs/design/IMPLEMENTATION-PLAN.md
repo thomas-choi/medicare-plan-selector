@@ -204,7 +204,7 @@ pushes, merges, tags or deploys.
 
 ## v0.5 work packages (Thomas's assignment 2026-11-21; design in `DESIGN-v0.5-ADDENDUM.md`)
 
-Status (2026-11-21): **designed, ready for Thomas's sign-off; nothing implemented.** Owner of every coding package: the
+Status (2026-11-21): **designed, ready for Thomas's sign-off; WP16 implemented (NS1–NS7 green), the rest not started.** Owner of every coding package: the
 Claude coding worker on ml3090 (Plan mode first, Auto after Thomas approves), **reviewed by Philip**. Same rules as above:
 cumulative regression tests, the worker never pushes, merges, tags or deploys, commits only on a signal. Every finished
 package gets a `docs/CHANGELOG.md` entry under rule R-B (When / Who / Reference / What).
@@ -219,7 +219,7 @@ package gets a `docs/CHANGELOG.md` entry under rule R-B (When / Who / Reference 
 
 | WP | Scope | Owner | Files (main) | Acceptance tests | Size | Depends on |
 |---|---|---|---|---|---|---|
-| **WP16** | No-save is the default, enforced (B2): `default_session_mode: Literal["nosave"]`; pin `DEFAULT_SESSION_MODE: nosave` in both compose files; Consent always preselects No-save; smoke asserts it; docs | Claude worker; review Philip | `backend/selector/config.py`, `backend/tests/unit/test_config.py`, `docker-compose.yml`, `docker-compose.prod.yml`, `frontend/src/Consent.tsx`, `frontend/src/App.test.tsx`, `scripts/smoke.sh`, `backend/tests/unit/test_dev_tooling.py`, `backend/tests/nosave/test_api_nosave.py`, `.env.example`, `deploy/README.md` | NS1–NS7 (NS8 with WP20); N1–N8 still green | S | – |
+| **WP16** (done 2026-11-21, see CHANGELOG) | No-save is the default, enforced (B2): `default_session_mode: Literal["nosave"]`; pin `DEFAULT_SESSION_MODE: nosave` in both compose files; Consent always preselects No-save; smoke asserts it; docs | Claude worker; review Philip | `backend/selector/config.py`, `backend/tests/unit/test_config.py`, `docker-compose.yml`, `docker-compose.prod.yml`, `frontend/src/Consent.tsx`, `frontend/src/App.test.tsx`, `scripts/smoke.sh`, `backend/tests/unit/test_dev_tooling.py`, `backend/tests/nosave/test_api_nosave.py`, `.env.example`, `deploy/README.md` | NS1–NS7 (NS8 with WP20); N1–N8 still green | S | – |
 | **WP19** | Alaska and Connecticut county mapping (B6): NBER SSA–FIPS crosswalk as `XW2`, CT legacy counties + planning-region mapping, AK boroughs; empty `pending_fips_states` | Claude worker; review Philip | `backend/selector/ingest/parsers/county_xwalk.py`, `backend/selector/ingest/validate.py`, `sources/2027.yaml`, `sources/ssa_fips_overrides.csv`, `sources.lock`, `backend/selector/geo/`, fixtures, `docs/DATA-SOURCES.md` | AK1–AK4 | S–M | – |
 | **WP20** | Playwright E2E + browser half of N9 (B7) | Claude worker; review Philip | `frontend/package.json` + lock (`@playwright/test`), `frontend/playwright.config.ts`, `frontend/e2e/*.spec.ts`, `scripts/e2e_db_check.py`, `Makefile` (`e2e`), `.gitignore`, `.github/workflows/ci.yml` (optional job), `docs/OPERATION.md` | E1–E8 (E1 = NS8, E3/E4 = N9) | M | WP16 |
 | **WP22** | ml3090 drug-search checks M1–M4 (B9, from A2.3) | Thomas runs on ml3090; Philip records | `qa/ML3090-A2.3.md` (new), `docs/CHANGELOG.md` | M1–M4 recorded with output and date | XS | – |

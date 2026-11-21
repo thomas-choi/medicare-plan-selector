@@ -61,6 +61,33 @@ describe("consent → intake → compare (No-save)", () => {
     expect(window.sessionStorage.length).toBe(0);
   });
 
+  it("NS5: preselects No-save even when the config says Saved is the default", async () => {
+    // A forged or misconfigured /api/config must not preselect Saved (DESIGN v0.5 B2.3 G3).
+    mockFetch({
+      "GET /api/config": { ...CONFIG, default_mode: "saved", modes: ["nosave", "saved"] },
+      "GET /api/session": { session: null },
+    });
+    render(<App />);
+    expect(await screen.findByRole("radio", { name: /No-save/ })).toBeChecked();
+    const saved = screen.getByRole("radio", { name: /Save for 30 days/ });
+    expect(saved).toBeEnabled();
+    expect(saved).not.toBeChecked();
+  });
+
+  it("NS6: Start without touching the radio creates a No-save session", async () => {
+    const calls = mockFetch({
+      "GET /api/config": { ...CONFIG, default_mode: "saved" },
+      "GET /api/session": { session: null },
+      "POST /api/session": { session: { mode: "nosave", expires_at: "x", plan_year: 2027 } },
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: /estimate tool/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    expect(await screen.findByText("No-save", { selector: ".badge" })).toBeInTheDocument();
+    const post = calls.find((c) => c.key === "POST /api/session");
+    expect((post?.body as { mode: string }).mode).toBe("nosave");
+  });
+
   it("offers only No-save when Saved mode is unavailable", async () => {
     mockFetch({ "GET /api/config": { ...CONFIG, modes: ["nosave"] }, "GET /api/session": { session: null } });
     render(<App />);

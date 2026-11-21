@@ -17,6 +17,7 @@ Start from `.env.example` and change at least:
 | `COMPOSE_DATABASE_URL` | `mysql+pymysql://msp_api:<api-pw>@mysql:3306/msp` (used by the containers) |
 | `COMPOSE_REDIS_URL` | `redis://:<redis-pw>@redis:6379/0` |
 | `PROFILE_ENC_KEY` | `python3 -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())"` (enables Saved mode) |
+| `DEFAULT_SESSION_MODE` | `nosave`, the only accepted value (DESIGN v0.5 B2). Any other value stops the API; `docker-compose.prod.yml` also pins it to `nosave`. Saved mode is offered only when `PROFILE_ENC_KEY` is set and the user picks it |
 | `COOKIE_SECURE` | `true` |
 | `ADMIN_GATE_SECRET` | `python3 -c "import secrets;print(secrets.token_hex(32))"` |
 | `MAX_SESSIONS_PER_IP_PER_DAY` | `5` (DESIGN §8.2) |

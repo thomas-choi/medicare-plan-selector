@@ -49,7 +49,7 @@ containers use the service names (`mysql:3306`, `redis:6379`), which the dev com
 | Variable | Purpose |
 |---|---|
 | `DATABASE_URL`, `INGEST_DATABASE_URL`, `MIGRATOR_DATABASE_URL`, `REDIS_URL` | three MySQL roles (API read-only on plan data) and Redis |
-| `DEFAULT_SESSION_MODE` | `nosave` (default) or `saved` |
+| `DEFAULT_SESSION_MODE` | `nosave` only (DESIGN v0.5 B2). Any other value stops the API; both compose files pin it. Saved mode is offered when `PROFILE_ENC_KEY` is set and the user picks it |
 | `PROFILE_ENC_KEY` | enables Saved mode (AES-GCM at rest); blank = No-save only |
 | `LLM_PROVIDER`, `LLM_MODEL` | `anthropic` (design default), `xai`, `openai_compat`, `fake` (keyless demo) or blank (no-LLM) |
 | `ANTHROPIC_API_KEY`, `XAI_API_KEY`, `OPENAI_COMPAT_API_KEY` | key for the chosen provider only |
