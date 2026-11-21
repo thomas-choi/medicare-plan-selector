@@ -512,3 +512,36 @@ original form. Branch names in headings are where the work was first committed; 
     - Run a real `make ingest` on a **local** test database. Expect the validation to pass, and Alaska PDPs to have
       no retired SSA codes in `plan_county`.
   - Not pushed.
+
+## QA — WP15/WP16/WP19 verification round (2026-11-21, Hermes agent)
+- **When:** 2026-11-21 04:15 MST
+- **Who:** Hermes agent (QA)
+- **Reference:** Thomas's QA assignment of 2026-11-21 ("check the CHANGELOG since the last QA,
+  review the corresponding design, report for Claude (coding) / Philip (design), suggest
+  production deployment prep, commit and push on `fix/drug-search`"); the "For QA" items in the
+  WP16, WP19 and WP19-follow-up entries above; design v0.5 B2/B6/B6.1; results in
+  `qa/QA-REPORT-v0.5-wp16-wp19.md`.
+- **What:**
+  - Full cumulative regression at `035051f`: `make test` green — lint clean, **424 backend
+    passed, 45 Vitest passed** (only the known cosmetic React duplicate-key warnings).
+  - Real 2027 ingest into a **local** scratch schema `msp_test_qav05` (127.0.0.1:3307, per the
+    A10.3 ruling; live server untouched): migrations 0004–0006 + grants, then full ingest
+    passes every validation — 5,884 plans, `plan_county` 159,665.
+  - WP19 acceptance verified in the ingested data: **0 pending** counties; **9 retired** Alaska
+    codes, **0** `plan_county` rows using them (81 rows removed vs the pre-WP19 load);
+    30 `crosswalk_nber` counties (XW3); Connecticut's 8 legacy counties (SSA 07xxx) map to
+    FIPS 09001–09015 and 58 plans serve them.
+  - WP16 by-hand check: `DEFAULT_SESSION_MODE=saved` refused with "must be nosave (DESIGN
+    v0.5 B2)"; NS1–NS7 green in the suite.
+  - QA-side note (not a code bug): a hand-run scratch setup needs `selector db-grants` after
+    `migrate up`; the first ingest attempt failed on access denied until grants were applied.
+  - Feedback to Claude: all three packages verified, no findings; idea — fold `db-grants` into
+    the migrate path so hand-run scratch setups can't be half-provisioned.
+  - Feedback to Philip: B6.1 conditions hold in code and data; no design changes needed; the
+    HUD CT planning-region **U** item remains open before launch week.
+  - **Production deployment prep** (detailed in the QA report): WP21 prod stack with
+    `DEFAULT_SESSION_MODE` pinned server-side (B2 gaps G2/G3); B8 deploy checklist + Thomas's
+    go decision; live `msp` is at Alembic 0006 (no action needed for this deploy); WP17
+    directory coverage (Aetna registration = Q14); legal review B10/Q9 before Nov 25; HUD CT
+    verification; WP14/WP20 open and not blockers per the v0.5 ordering.
+  - Docs: added `qa/QA-REPORT-v0.5-wp16-wp19.md`; dropped the scratch schema afterwards.
