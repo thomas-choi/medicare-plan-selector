@@ -219,3 +219,21 @@ One entry per work package on `feat/mvp`. Dates are MST (America/Phoenix).
 - Docs: `docs/design/DESIGN-v0.4-ADDENDUM.md` (doctors, dental, Original Medicare + Part D baseline),
   `CHANGES-FROM-v0.3.md`, WP10–WP14 in `IMPLEMENTATION-PLAN.md`, Q12–Q21 in `OPEN-QUESTIONS.md`.
 
+
+## QA — shared-MySQL (3306) regression round (2026-11-19, Hermes agent)
+- when: 2026-11-19 ~21:00 MST
+- who: Hermes agent
+- Reference: Thomas's request to re-run regression after the WP10–WP13 pull, using the shared
+  dev/QA MySQL service (192.168.0.216:3306) with live CMS 2027 data; results in `qa/QA-REPORT-3306.md`.
+- What:
+  - Provisioned DBA access on the shared server: schema `msp`, users `msp_migrator` /
+    `msp_ingest` / `msp_api` (and later `msp_dev_*` restricted to ml3090, 192.168.0.212).
+  - Applied Alembic migrations 0004–0006 and re-ran the real 2027 ingest on the shared server
+    (`plan_dental` 5,561 rows, `medicare_params` 1 row); `sources.lock` updated and committed.
+  - Test-code change: `backend/tests/conftest.py` now reads DB/Redis credentials from
+    `MSP_TEST_*_PASSWORD` env vars, keeping the committed dev-stack literals as defaults.
+  - Ran the full backend suite against 3306: 340 passed / 39 failed / 8 errors — every
+    MySQL-backed test green; all failures are Redis-only (no Redis on the shared server).
+  - Standard `make test` (local stack) fully green: lint, backend, 43 Vitest tests.
+  - Docs: added `qa/QA-REPORT-3306.md`; committed and pushed branch `qa/v0.4-3306-regression`
+    (commit `570543a`); repo remote switched from https to SSH.
