@@ -111,12 +111,15 @@ def build_year(year: int, fetched: dict[str, Fetched], spec: dict[str, Any], ove
     for r in pbp.parse_plan_area(_read(s2.paths["plan_area"])):
         if r["plan_key"] in plan_keys:
             pc.add((r["plan_key"], r["ssa_code"]))
+    # Region-wide plans (PDPs, Regional PPOs) skip `retired` SSA areas (DESIGN v0.5 B6.1): the S3 locator still lists
+    # them in their region, but they are no longer real places. A PlanArea row naming one fails validation instead.
+    live = [c for c in counties if c["fips_status"] != "retired"]
     by_region: dict[str, list[str]] = defaultdict(list)
-    for c in counties:
+    for c in live:
         if c["pdp_region_code"]:
             by_region[c["pdp_region_code"]].append(c["ssa_code"])
     by_ma_region: dict[str, list[str]] = defaultdict(list)
-    for c in counties:
+    for c in live:
         if c["ma_region_code"]:
             by_ma_region[c["ma_region_code"]].append(c["ssa_code"])
     in_plan_area = {k for k, _ in pc}

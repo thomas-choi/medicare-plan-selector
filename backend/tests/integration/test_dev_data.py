@@ -126,7 +126,7 @@ def test_ak3_chugach_and_copper_river_zips_resolve(api_engine: Engine) -> None:
     assert [(o.ssa_code, o.name) for o in copper.counties] == [("02066", "Copper River")]
 
 
-def test_county_picker_hides_retired_ssa_areas(api_engine: Engine, dev_loaded: dict[str, str]) -> None:
+def test_ak5_county_picker_hides_retired_ssa_areas(api_engine: Engine, dev_loaded: dict[str, str]) -> None:
     # `county.state` comes from the Landscape; the fixture Landscape has no AK/CT plans (the real 2027 one has both),
     # so set the abbreviations here the way a real ingest does.
     ing = create_engine(dev_loaded["ingest"])
@@ -140,3 +140,16 @@ def test_county_picker_hides_retired_ssa_areas(api_engine: Engine, dev_loaded: d
     assert "02261" not in ak and {"02063", "02066", "02270"} <= set(ak)
     assert all(o.fips for o in ak.values())
     assert ct == ["09001", "09003", "09009", "09013"]
+
+
+def test_ak5_zip_lookup_never_returns_a_retired_area(api_engine: Engine) -> None:
+    """A stale HUD row with the pre-2019 Valdez-Cordova FIPS 02261 finds no county (that area is `retired`)."""
+
+    class Hud:
+        def zip_counties(self, z: str) -> list[ZipCounty]:
+            return [ZipCounty(z, "02261", Decimal("1"), 2018, 4)]
+
+    with api_engine.connect() as c:
+        res = resolve_zip(c, "99999", hud=Hud(), may_write_cache=False)  # type: ignore[arg-type]
+        assert res.counties == []
+        assert c.execute(text("SELECT fips, fips_status FROM county WHERE ssa_code='02261'")).one() == (None, "retired")

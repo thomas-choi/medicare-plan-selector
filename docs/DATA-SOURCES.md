@@ -20,7 +20,7 @@ agency. This project is **not affiliated with or endorsed by CMS, Medicare or an
 | XW1 | CMS MA State/County Penetration (November 2026) | SSA ↔ FIPS county codes (geography columns only) |
 | XW2 | US Census Bureau 2020 county FIPS list | Validates the hand-curated `sources/ssa_fips_overrides.csv` (including the 8 legacy Connecticut counties, FIPS 09001–09015) |
 | XW3 | NBER SSA to FIPS State and County Crosswalk 2026 (built from CMS files; [nber.org](https://www.nber.org/research/data/ssa-federal-information-processing-series-fips-state-and-county-crosswalk)) | SSA ↔ FIPS for codes missing from XW1, i.e. Alaska (design v0.5 B6; the design text calls it "XW2", renamed because XW2 was taken) |
-| S27 | US Census Bureau Connecticut county → planning-region crosswalk (`ct_cou_to_cousub_crosswalk.xlsx`) | Connecticut planning regions (FIPS 09110–09190, as HUD may return them) → legacy counties; the table is in `backend/selector/geo/ct_regions.py` |
+| S27 | US Census Bureau Connecticut county → planning-region crosswalk (`ct_cou_to_cousub_crosswalk.xlsx`) | Connecticut planning regions (FIPS 09110–09190, as HUD may return them) → legacy counties; the table is in `backend/selector/geo/ct_regions.py`; the file itself is kept unchanged as the test fixture `backend/tests/fixtures/census/ct_cou_to_cousub_crosswalk.xlsx` (test AK6) |
 
 Alaska and Connecticut (design v0.5 B6): no county is left `pending`. Alaska maps through XW3; nine retired Alaska
 SSA areas (e.g. Valdez-Cordova, split in 2019 into Chugach and Copper River) have no FIPS county today and are listed

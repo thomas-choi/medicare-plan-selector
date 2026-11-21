@@ -2,17 +2,24 @@
 
 from __future__ import annotations
 
+import hashlib
+import re
+from collections import Counter
 from pathlib import Path
 
+import openpyxl
 import pytest
 import yaml
 
+from selector.geo import ct_regions
 from selector.geo.ct_regions import CT_PLANNING_REGIONS, legacy_fips
 from selector.ingest.parsers import county_xwalk, decode, spuf
 from selector.ingest.run import check_overrides_against_census
 from tests.cms_fixtures import FIX, SOURCES_DIR
 
 OVERRIDES = SOURCES_DIR / "ssa_fips_overrides.csv"
+# S27, kept unchanged as a fixture so the table in `geo/ct_regions.py` can't drift from it (DESIGN v0.5 B6.1, AK6).
+CT_CENSUS = Path(__file__).parents[2] / "fixtures" / "census" / "ct_cou_to_cousub_crosswalk.xlsx"
 
 
 def _fixture_counties() -> dict[str, dict[str, object]]:
@@ -95,3 +102,23 @@ def test_ak4_no_pending_states_left() -> None:
     spec = yaml.safe_load((SOURCES_DIR / "2027.yaml").read_text())
     assert spec["pending_fips_states"] == []
     assert spec["sources"]["XW3"]["fetch"] == "file"
+
+
+def test_ak6_ct_table_matches_the_census_file() -> None:
+    """AK6 (DESIGN v0.5 B6.1): `CT_PLANNING_REGIONS` equals the Census CT county-to-planning-region file, and the
+    fixture is the exact file whose sha256 the module header cites."""
+    digest = hashlib.sha256(CT_CENSUS.read_bytes()).hexdigest()
+    assert re.search(rf"sha256 {digest}\b", ct_regions.__doc__ or ""), digest
+    wb = openpyxl.load_workbook(CT_CENSUS, read_only=True)
+    towns: Counter[tuple[str, str, str, str]] = Counter()
+    for row in wb.worksheets[0].iter_rows(min_row=2, values_only=True):
+        if row[0] != "09":
+            continue  # blank line and the glossary below the data
+        old_fp, old_name, new_fp, new_name = row[1], row[2], row[3], row[4]
+        towns[(f"09{new_fp}", str(new_name), f"09{old_fp}", str(old_name).removesuffix(" County"))] += 1
+    wb.close()
+    from_census: dict[str, tuple[str, dict[str, tuple[str, int]]]] = {}
+    for (region, region_name, county, county_name), n in towns.items():
+        from_census.setdefault(region, (region_name, {}))[1][county] = (county_name, n)
+    in_code = {r: (name, {f: (cn, n) for f, cn, n in cs}) for r, (name, cs) in CT_PLANNING_REGIONS.items()}
+    assert in_code == from_census

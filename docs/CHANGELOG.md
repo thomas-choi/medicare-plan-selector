@@ -479,3 +479,36 @@ original form. Branch names in headings are where the work was first committed; 
   - Note for the worker: the B6 rename and the B6 paragraph asked for in items (1) and (2) are now done by this
     design commit; the worker still owns the code, the overrides citations, the module header and tests AK5/AK6.
   - Code not reviewed yet: the WP19 code was not on GitHub at review time.
+
+## WP19 follow-up — Philip's B6.1 review conditions (AK5, AK6)
+- **When:** 2026-11-21 03:35 MST
+- **Who:** Claude (Claude Opus 5.5, coding worker)
+- **Reference:** Philip's review in the entry above ("Design review — WP19 differences accepted (B6.1)");
+  `docs/design/DESIGN-v0.5-ADDENDUM.md` B6 tests AK5/AK6 and B6.1 items 2 and 3
+- **What:**
+  - B6.1 item 2, retired codes:
+    - `ingest/load.py`: PDP and Regional PPO region expansion now skips `retired` SSA areas. The S3 locator still
+      lists all 9 retired Alaska codes in PDP region 34 and MA region 26, so before this they were attached to every
+      Alaska PDP.
+    - `ingest/validate.py`: the ingest fails with "N plan service-area rows use a retired SSA county: …" when a
+      plan's own service area (PBP PlanArea) names a retired code. The plan is never dropped silently.
+    - `geo/resolve.py`: the ZIP lookup filters out `retired` explicitly, as well as through their blank FIPS.
+    - Real 2027 files checked offline: no PlanArea row uses a retired code, so the real ingest still passes.
+    - All 9 retired rows in `sources/ssa_fips_overrides.csv` already carry a reason and citation (checked).
+  - B6.1 item 3, Connecticut table:
+    - The Census file (S27, sha256 `f70c3ce6…c238a`, 29 KB) is now the fixture
+      `backend/tests/fixtures/census/ct_cou_to_cousub_crosswalk.xlsx`.
+    - The `geo/ct_regions.py` header already cites the file and its sha256; `docs/DATA-SOURCES.md` S27 now names the
+      fixture.
+  - Tests:
+    - **AK5:** `test_ingest.py` covers the ingest failing on a PlanArea row with 02261, and an Alaska-region PDP
+      getting 02013/02063/02066/02270 but not 02261. `test_dev_data.py` covers the picker hiding retired areas
+      (renamed AK5), and a stale HUD row with the pre-2019 FIPS 02261 finding no county.
+    - **AK6:** `test_ak_ct_counties.py` checks that the fixture's sha256 matches the module header, and that
+      `CT_PLANNING_REGIONS` equals the region → legacy county → town counts read from the xlsx.
+  - Result: `make test` passes with **424 backend + 45 Vitest** tests (was 420 + 45); `pre-commit` passed.
+  - For QA:
+    - Run AK5/AK6 as above.
+    - Run a real `make ingest` on a **local** test database. Expect the validation to pass, and Alaska PDPs to have
+      no retired SSA codes in `plan_county`.
+  - Not pushed.

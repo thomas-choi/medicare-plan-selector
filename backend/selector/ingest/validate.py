@@ -80,6 +80,18 @@ def validate_year(conn: Connection, year: int, spec: dict[str, Any], oop_thresho
     if rows:
         problems.append(f"{len(rows)} counties with a pending SSA→FIPS mapping: {rows[:10]}")
 
+    # DESIGN v0.5 B6.1 (AK5): a plan must never be served in a `retired` SSA area. Region-wide plans skip them at load
+    # time, so a hit here is a plan whose own service area (PBP PlanArea) still names one: fail, never drop it silently.
+    rows = conn.execute(
+        text(
+            "SELECT pc.plan_key, c.ssa_code, c.name FROM plan_county pc JOIN county c ON c.ssa_code=pc.ssa_code "
+            "WHERE pc.plan_year=:y AND c.fips_status='retired' ORDER BY pc.plan_key, c.ssa_code"
+        ),
+        y,
+    ).all()
+    if rows:
+        problems.append(f"{len(rows)} plan service-area rows use a retired SSA county: {rows[:10]}")
+
     # Part D plans need a formulary.
     n = _scalar(
         conn,

@@ -53,12 +53,14 @@ class LocationResult:
 
 def _counties_for(conn: Connection, zc: list[ZipCounty]) -> list[CountyOption]:
     """SSA counties for HUD rows. A Connecticut planning-region FIPS becomes its legacy county or counties
-    (DESIGN v0.5 B6); a region spanning several keeps the HUD ratio on each, since HUD does not split it."""
+    (DESIGN v0.5 B6); a region spanning several keeps the HUD ratio on each, since HUD does not split it. A `retired`
+    SSA area is never returned (B6.1)."""
     out: list[CountyOption] = []
     seen: set[str] = set()
     for z in zc:
         for fips in legacy_fips(z.fips):
-            rows = conn.execute(select(m.county).where(m.county.c.fips == fips).order_by(m.county.c.ssa_code))
+            q = select(m.county).where(m.county.c.fips == fips, m.county.c.fips_status != "retired")
+            rows = conn.execute(q.order_by(m.county.c.ssa_code))
             for r in rows.mappings():
                 if r["ssa_code"] in seen:
                     continue

@@ -112,6 +112,36 @@ def test_ak4_ingest_fails_when_a_new_pending_county_appears(ingest_engine: Engin
                    fetched=fixture_fetched(fixtures))  # fmt: skip
 
 
+def test_ak5_ingest_fails_when_a_plan_still_serves_a_retired_county(ingest_engine: Engine, tmp_path: Path) -> None:
+    """AK5 (DESIGN v0.5 B6.1): a PlanArea row naming retired Valdez-Cordova (02261) stops the ingest; never dropped."""
+    fixtures = tmp_path / "fix"
+    shutil.copytree(FIX, fixtures)
+    with (fixtures / "plan_area.txt").open("a") as f:
+        f.write("H0028\t028\t0\t1\t01\t01\tH0028_028_0\tH0028\t028\t0\t02261\t0\t\t2027\t0\tValdez-Cordova\tAK\n")
+    msg = r"1 plan service-area rows use a retired SSA county.*H0028_028_0.*02261"
+    with pytest.raises(ValidationFailed, match=msg):
+        run_ingest(ingest_engine, 2027, sources_dir=SOURCES_DIR, lock_path=tmp_path / "sources.lock",
+                   fetched=fixture_fetched(fixtures))  # fmt: skip
+
+
+def test_ak5_region_wide_plans_skip_retired_counties(ingest_engine: Engine, tmp_path: Path) -> None:
+    """AK5: a PDP in the Alaska region (34) gets every live Alaska county but not the retired 02261."""
+    fixtures = tmp_path / "fix"
+    shutil.copytree(FIX, fixtures)
+    land = fixtures / "landscape.csv"
+    lines = land.read_text().splitlines(keepends=True)
+    i = next(n for n, line in enumerate(lines) if ",S4802,134," in line)
+    assert lines[i].rstrip("\r\n").endswith(",28,Arizona")
+    lines[i] = lines[i].rstrip("\r\n")[: -len(",28,Arizona")] + ",34,Alaska\n"
+    land.write_text("".join(lines))
+    run_ingest(ingest_engine, 2027, sources_dir=SOURCES_DIR, lock_path=tmp_path / "sources.lock",
+               fetched=fixture_fetched(fixtures))  # fmt: skip
+    with ingest_engine.connect() as c:
+        got = c.execute(text("SELECT ssa_code FROM plan_county WHERE plan_year=2027 AND plan_key='S4802_134_0' "
+                             "ORDER BY ssa_code")).scalars().all()  # fmt: skip
+    assert got == ["02013", "02063", "02066", "02270"]
+
+
 def test_api_role_reads_plan_data(ingest_engine: Engine, tmp_path: Path, scratch_schema: dict[str, str]) -> None:
     _ingest(ingest_engine, tmp_path)
     eng = create_engine(scratch_schema["api"])
