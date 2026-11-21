@@ -54,6 +54,9 @@ def deterministic_summary(canvas: dict[str, Any]) -> str:
     lines = ["Here is the comparison from the plan data (estimates only):"]
     for r in rows[:3]:
         lines.append(f"{r['rank']}. {r['plan_name']} ({r['plan_key']}): about {dollars(r['total_est_cents'])} a year.")
+    if b := canvas.get("baseline"):
+        total = dollars(b["total_est_cents"])
+        lines.append(f"For reference, the standard Original Medicare + Part D option: about {total} a year.")
     lines.append("Use the checklist tab to confirm your finalists with Medicare Plan Finder and each plan.")
     return "\n".join(lines)
 

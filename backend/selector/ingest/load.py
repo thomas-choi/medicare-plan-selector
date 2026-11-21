@@ -19,7 +19,7 @@ from selector import models as m
 from selector.ingest.fetch import Fetched
 from selector.ingest.manifest import sha256_bytes
 from selector.ingest.normalize import src_ref
-from selector.ingest.parsers import county_xwalk, decode, landscape, pbp, read_delimited, spuf
+from selector.ingest.parsers import county_xwalk, decode, landscape, pbp, pbp_dental, read_delimited, spuf
 
 BATCH = 5000
 YEAR_TABLES: Sequence[Table] = (
@@ -32,6 +32,8 @@ YEAR_TABLES: Sequence[Table] = (
     m.tier_cost,
     m.insulin_cost,
     m.part_d_params,
+    m.medicare_params,
+    m.plan_dental,
 )
 
 
@@ -48,6 +50,8 @@ class YearData:
     tier_cost: list[dict[str, Any]] = field(default_factory=list)
     insulin: list[dict[str, Any]] = field(default_factory=list)
     part_d_params: dict[str, Any] = field(default_factory=dict)
+    medicare_params: dict[str, Any] = field(default_factory=dict)
+    dental: list[dict[str, Any]] = field(default_factory=list)
     oop_thresholds: set[int] = field(default_factory=set)
 
     def rows_for(self, table: Table) -> list[dict[str, Any]]:
@@ -61,6 +65,8 @@ class YearData:
             "tier_cost": self.tier_cost,
             "insulin_cost": self.insulin,
             "part_d_params": [self.part_d_params] if self.part_d_params else [],
+            "medicare_params": [self.medicare_params] if self.medicare_params else [],
+            "plan_dental": self.dental,
         }[table.name]
 
 
@@ -132,6 +138,10 @@ def build_year(year: int, fetched: dict[str, Fetched], spec: dict[str, Any], ove
         if r["plan_key"] not in plan_keys:
             continue
         (d.inpatient if kind == "interval" else d.pbp_benefit).append({"plan_year": year, **r})
+    # Dental (S2 b16, addendum A4).
+    for r in pbp_dental.parse_dental(_read(s2.paths["b16"]), s2.entry.vintage):
+        if r["plan_key"] in plan_keys:
+            d.dental.append({"plan_year": year, **r})
 
     # Part D (S3).
     pf: dict[str, str] = {}
@@ -170,7 +180,30 @@ def build_year(year: int, fetched: dict[str, Fetched], spec: dict[str, Any], ove
         "oop_threshold_cents": int(params["oop_threshold_cents"]),
         "src_ref": src_ref("S6", str(params["vintage"]), "part_d_params", url=params["citation"]),
     }
+    d.medicare_params = medicare_params_row(year, spec)
     return d
+
+
+MEDICARE_FIELDS = (
+    "part_b_premium_cents", "part_b_deductible_cents", "part_b_coins_pct", "part_a_deductible_cents",
+    "part_a_day61_cents", "part_a_lifetime_cents", "snf_day21_cents", "medigap_hd_deductible_cents",
+    "medigap_n_office_copay_cents", "medigap_n_er_copay_cents",
+)  # fmt: skip
+MEDICARE_GROUPS = ("part_b", "part_a", "medigap_hd", "medigap_n")
+
+
+def medicare_params_row(year: int, spec: dict[str, Any]) -> dict[str, Any]:
+    """The `medicare_params` row from `params.medicare` in sources/<year>.yaml; every group must be cited."""
+    mp = spec["params"]["medicare"]
+    cites = mp.get("citations") or {}
+    missing = [g for g in MEDICARE_GROUPS if not (cites.get(g) or {}).get("url")]
+    if missing:
+        raise ValueError(f"sources/{year}.yaml params.medicare: no citation for {missing}")
+    refs = {
+        g: src_ref(str(cites[g]["source"]), str(cites[g]["vintage"]), f"medicare_params:{g}", url=cites[g]["url"])
+        for g in MEDICARE_GROUPS
+    }
+    return {"plan_year": year, **{f: int(mp[f]) for f in MEDICARE_FIELDS}, "src_ref": refs}
 
 
 def _insert(conn: Connection, table: Table, rows: Iterable[dict[str, Any]]) -> int:

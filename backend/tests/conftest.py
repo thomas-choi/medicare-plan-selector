@@ -18,10 +18,10 @@ MYSQL_HOST = os.environ.get("MSP_TEST_MYSQL_HOST", "127.0.0.1")
 MYSQL_PORT = os.environ.get("MSP_MYSQL_PORT", "3307")
 REDIS_PORT = os.environ.get("MSP_REDIS_PORT", "6380")
 
-MIGRATOR_URL = f"mysql+pymysql://msp_migrator:dev-migrator-pw@{MYSQL_HOST}:{MYSQL_PORT}/msp"
-INGEST_URL = f"mysql+pymysql://msp_ingest:dev-ingest-pw@{MYSQL_HOST}:{MYSQL_PORT}/msp"
-API_URL = f"mysql+pymysql://msp_api:dev-api-pw@{MYSQL_HOST}:{MYSQL_PORT}/msp"
-REDIS_URL = f"redis://:dev-redis-pw@{MYSQL_HOST}:{REDIS_PORT}/0"
+MIGRATOR_URL = f"mysql+pymysql://msp_migrator:{os.environ.get("MSP_TEST_MIGRATOR_PASSWORD", "dev-migrator-pw")}@{MYSQL_HOST}:{MYSQL_PORT}/msp"
+INGEST_URL = f"mysql+pymysql://msp_ingest:{os.environ.get("MSP_TEST_INGEST_PASSWORD", "dev-ingest-pw")}@{MYSQL_HOST}:{MYSQL_PORT}/msp"
+API_URL = f"mysql+pymysql://msp_api:{os.environ.get("MSP_TEST_API_PASSWORD", "dev-api-pw")}@{MYSQL_HOST}:{MYSQL_PORT}/msp"
+REDIS_URL = f"redis://:{os.environ.get("MSP_TEST_REDIS_PASSWORD", "dev-redis-pw")}@{MYSQL_HOST}:{REDIS_PORT}/0"
 
 
 def compose(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:

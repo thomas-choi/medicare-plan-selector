@@ -3,8 +3,10 @@
 #   - remote: another machine's dev stack, e.g. a coding host (ml3090) using the stack on ml3060 (192.168.0.216).
 # The MySQL host comes from MSP_DB_HOST, else from INGEST_DATABASE_URL / DATABASE_URL in .env. It is local when it
 # is a loopback name/address or one of this machine's own addresses (`hostname -I`).
-# Sets DEV_DB_HOST, DEV_DB_PORT, DEV_REDIS_HOST, DEV_REDIS_PORT and DEV_DB_REMOTE (1 or empty). When remote, it also
-# exports COMPOSE_*_URL (unless already set) so the api container uses the same remote MySQL/Redis as the host.
+# Sets DEV_DB_HOST, DEV_DB_PORT, DEV_REDIS_HOST, DEV_REDIS_PORT, DEV_DB_REMOTE and DEV_REDIS_REMOTE (1 or empty).
+# When MySQL is remote, it also exports COMPOSE_*_URL (unless already set) so the api container uses the same MySQL
+# as the host. Redis may stay local (e.g. live data on another machine's MySQL, sessions in this machine's Redis):
+# then the container reaches it as the compose service `redis:6379`, because 127.0.0.1 inside it is itself.
 
 _devdb_host() { # URL -> host
   local u="${1#*://}"
@@ -35,13 +37,26 @@ DEV_REDIS_HOST="${DEV_REDIS_HOST:-$DEV_DB_HOST}"
 DEV_REDIS_PORT="$(_devdb_port "${REDIS_URL:-}" "${MSP_REDIS_PORT:-6380}")"
 DEV_DB_REMOTE=""
 _devdb_is_local "$DEV_DB_HOST" || DEV_DB_REMOTE=1
+DEV_REDIS_REMOTE=""
+_devdb_is_local "$DEV_REDIS_HOST" || DEV_REDIS_REMOTE=1
+
+_devdb_redis_in_compose() { # local Redis URL -> the same URL via the compose service name
+  local scheme="${1%%://*}" rest="${1#*://}" auth="" path=""
+  case "$rest" in *@*) auth="${rest%%@*}@"; rest="${rest#*@}" ;; esac
+  case "$rest" in */*) path="/${rest#*/}" ;; esac
+  printf '%s://%sredis:6379%s' "$scheme" "$auth" "$path"
+}
 
 if [ -n "$DEV_DB_REMOTE" ]; then
   # The containers reach the remote stack over the LAN with the same URLs as the host.
   export COMPOSE_DATABASE_URL="${COMPOSE_DATABASE_URL:-${DATABASE_URL:-}}"
   export COMPOSE_INGEST_DATABASE_URL="${COMPOSE_INGEST_DATABASE_URL:-${INGEST_DATABASE_URL:-}}"
   export COMPOSE_MIGRATOR_DATABASE_URL="${COMPOSE_MIGRATOR_DATABASE_URL:-${MIGRATOR_DATABASE_URL:-}}"
-  export COMPOSE_REDIS_URL="${COMPOSE_REDIS_URL:-${REDIS_URL:-}}"
+  if [ -n "$DEV_REDIS_REMOTE" ]; then
+    export COMPOSE_REDIS_URL="${COMPOSE_REDIS_URL:-${REDIS_URL:-}}"
+  elif [ -n "${REDIS_URL:-}" ]; then
+    export COMPOSE_REDIS_URL="${COMPOSE_REDIS_URL:-$(_devdb_redis_in_compose "$REDIS_URL")}"
+  fi
 fi
 
 # Remote stack: check that MySQL and Redis answer; explain how to publish them on the DB host if not.

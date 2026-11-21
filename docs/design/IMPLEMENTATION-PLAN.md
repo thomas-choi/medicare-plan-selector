@@ -148,8 +148,8 @@ Each package is PR-sized, with tests first. A `docs/CHANGELOG.md` entry is requi
 
 ## v0.4 work packages (Thomas's test comments 2026-11-19; design in `DESIGN-v0.4-ADDENDUM.md`)
 
-Status: **draft for Thomas's sign-off**, except WP9, which is implemented on local branch `fix/drug-search`
-(`19111e0`, not pushed). Same rules as above: cumulative tests, the worker never pushes, merges, tags or deploys.
+Status: WP9 implemented on local branch `fix/drug-search` (`19111e0`); **WP10–WP13 implemented on local branch
+`feat/v0.4`** (2026-11-19, not pushed; see `docs/CHANGELOG.md`). WP14 not started. Same rules as above: cumulative tests, the worker never pushes, merges, tags or deploys.
 
 Suggested order before Thomas enrolls (Nov 24): **WP9 → WP15 → WP10 → WP11 → WP12**, then WP13; WP14 after enrollment.
 WP15 is independent of WP10–WP14 and unblocks QA against a shared MySQL.
@@ -157,10 +157,10 @@ WP15 is independent of WP10–WP14 and unblocks QA against a shared MySQL.
 | WP | Scope | Size | Depends on |
 |---|---|---|---|
 | **WP9** (done, local) | Drug search: `RxNavClient.find` (exact → ingredient → approximate), ranking, `matched_as`/`how` on `GET /api/drugs`, 4 s/8 s timeouts, 0.1 s spacing; intake states (Searching…, found, fallback, empty, error), Enter searches | S | – |
-| **WP10** | 2027 Medicare parameters: `medicare_params(plan_year PK, part_b_premium_cents, part_b_deductible_cents, part_b_coins_pct, part_a_deductible_cents, part_a_day61_cents, part_a_lifetime_cents, snf_day21_cents, medigap_hd_deductible_cents, src_ref)`; Alembic `0003`; seeded from `sources/2027.yaml` (values A5.2, cited); `CostParams` reads it; remove "2026 placeholder" notes | S | – |
-| **WP11** | Pinned baseline: `cost/baseline.py` (`build_baseline`), `cost/medigap.py` (G, N, HDG rules, premium optional), profile `medigap`, `delta_vs_baseline_cents`; `compare_plans` returns `baseline`; Canvas pins the row and side-by-side column; export includes it | M | WP10 |
-| **WP12** | Dental: parser `ingest/parsers/pbp_dental.py` for `pbp_b16_dental.txt`, `plan_dental` table (Alembic `0004`), fixture sample, validation (golden H0028_028_0 = $500/yr shared); `GET /api/plans/{plan_key}/benefits`; tool `get_plan_benefits`; Dental column, side-by-side section, must-haves; optional dental-use preset behind a flag | M | – |
-| **WP13** | Doctors: intake NPI pick via `GET /api/providers` with `must_keep`; `network.py` `DirectoryChecker` (Plan-Net FHIR), `sources/directories.yaml` seed (UHC, Humana first), `selector directories sync`, `insurance_plan_map`; CMS opt-out check for the baseline; `POST /api/providers/network`; tool `check_provider_network`; policy/validator change (listing status only); badges + optional filter/weight | L | WP11 (baseline badge) |
+| **WP10** (done, local) | 2027 Medicare parameters: `medicare_params(plan_year PK, part_b_premium_cents, part_b_deductible_cents, part_b_coins_pct, part_a_deductible_cents, part_a_day61_cents, part_a_lifetime_cents, snf_day21_cents, medigap_hd_deductible_cents, src_ref)`; Alembic `0004` (`0003` was taken); seeded from `sources/2027.yaml` (values A5.2, cited); `CostParams` reads it; remove "2026 placeholder" notes | S | – |
+| **WP11** (done, local) | Pinned baseline: `cost/baseline.py` (`build_baseline`), `cost/medigap.py` (G, N, HDG rules, premium optional), profile `medigap`, `delta_vs_baseline_cents`; `compare_plans` returns `baseline`; Canvas pins the row and side-by-side column; export includes it | M | WP10 |
+| **WP12** (done, local) | Dental: parser `ingest/parsers/pbp_dental.py` for `pbp_b16_dental.txt`, `plan_dental` table (Alembic `0005`), fixture sample, validation (golden H0028_028_0 = $500/yr shared); `GET /api/plans/{plan_key}/benefits`; tool `get_plan_benefits`; Dental column, side-by-side section, must-haves; optional dental-use preset behind a flag | M | – |
+| **WP13** (done, local) | Doctors: intake NPI pick via `GET /api/providers` with `must_keep`; `network.py` `DirectoryChecker` (Plan-Net FHIR), `sources/directories.yaml` seed (UHC, Humana first), `selector directories sync`, `insurance_plan_map` (Alembic `0006`); CMS opt-out check for the baseline; `POST /api/providers/network`; tool `check_provider_network`; policy/validator change (listing status only); badges + optional filter/weight | L | WP11 (baseline badge) |
 | **WP14** (optional) | Carrier documents: `selector docs fetch` (robots check, 1 req/5 s/host, PDF only, ≤15 MB, sha256, H-number check), `plan_document` table, links in side-by-side; no value extraction | M | – |
 | **WP15** | Test/dev Redis is app-local (addendum A10). Decouple Redis from the MySQL host in `backend/tests/conftest.py`, `scripts/devdb.sh` and the Makefile; document `.env.example` and `README.md`. `docker-compose.yml` / `docker-compose.prod.yml`: comments only (no functional change required). Readiness (`/api/ready`) is unchanged. Owner: Claude coding worker on ml3090; review: Philip. No push, merge or deploy without Thomas's approval | S | – |
 

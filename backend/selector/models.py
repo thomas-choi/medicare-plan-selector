@@ -239,6 +239,76 @@ part_d_params = Table(
     Column("src_ref", JSON, nullable=False),
 )
 
+# Dental benefits per plan (PBP b16, addendum A4). Numbers shown to users come only from here (CMS), never from
+# carrier documents. `services_json`: [{code, label, group, mandatory, optional, copay_min_cents, copay_max_cents,
+# coins_min_pct, coins_max_pct, cost, limit_text}]; limit_text is CMS free text, display only.
+DENTAL_PERIODS = ("year", "2y", "3y", "6m", "3m", "month", "other")
+plan_dental = Table(
+    "plan_dental",
+    metadata,
+    _plan_year(),
+    Column("plan_key", String(16), primary_key=True),
+    Column("has_medicare_covered", Boolean, nullable=False),
+    Column("has_preventive", Boolean, nullable=False),
+    Column("has_comprehensive", Boolean, nullable=False),
+    Column("preventive_max_cents", Cents),
+    Column("preventive_max_period", Enum(*DENTAL_PERIODS, name="dental_period")),
+    Column("comprehensive_max_cents", Cents),
+    Column("comprehensive_max_period", Enum(*DENTAL_PERIODS, name="dental_period")),
+    Column("comprehensive_max_shared", Boolean),
+    Column("optional_supplemental", Boolean, nullable=False),
+    Column("services_json", JSON, nullable=False),
+    Column("src_ref", JSON, nullable=False),
+)
+
+# Public provider directory APIs (addendum A3.5), seeded from sources/directories.yaml (public URLs only, no keys).
+directory_endpoint = Table(
+    "directory_endpoint",
+    metadata,
+    Column("id", String(32), primary_key=True),
+    Column("name", String(128), nullable=False),
+    Column("org_patterns", JSON, nullable=False),
+    Column("contract_prefixes", JSON, nullable=False),
+    Column("base_url", String(255), nullable=False),
+    Column("auth", Enum("none", "app_key", "unsupported", name="directory_auth"), nullable=False),
+    Column("plan_id_system", String(255), nullable=False),
+    Column("plan_id_format", String(255), nullable=False),
+    Column("npi_search", String(16), nullable=False),  # supported | unverified
+    Column("notes", String(1024)),
+    Column("verified_at", Date),
+)
+
+# Carrier InsurancePlan → our plan_key with its network references (built by `selector directories sync`).
+insurance_plan_map = Table(
+    "insurance_plan_map",
+    metadata,
+    _plan_year(),
+    Column("plan_key", String(16), primary_key=True),
+    Column("endpoint_id", String(32), nullable=False),
+    Column("insurance_plan_id", String(128), nullable=False),
+    Column("network_refs", JSON, nullable=False),  # ["Organization/<id>", ...]
+    Column("fetched_at", Date, nullable=False),
+    Index(None, "endpoint_id"),
+)
+
+# Original Medicare / Medigap amounts per plan year (addendum A5.2), from cited values in sources/<year>.yaml.
+medicare_params = Table(
+    "medicare_params",
+    metadata,
+    Column("plan_year", SmallInteger, primary_key=True, autoincrement=False),
+    Column("part_b_premium_cents", Cents, nullable=False),  # monthly standard premium
+    Column("part_b_deductible_cents", Cents, nullable=False),
+    Column("part_b_coins_pct", SmallInteger, nullable=False),
+    Column("part_a_deductible_cents", Cents, nullable=False),  # per benefit period
+    Column("part_a_day61_cents", Cents, nullable=False),  # per day, days 61-90
+    Column("part_a_lifetime_cents", Cents, nullable=False),  # per lifetime reserve day
+    Column("snf_day21_cents", Cents, nullable=False),  # per day, SNF days 21-100
+    Column("medigap_hd_deductible_cents", Cents, nullable=False),  # high-deductible F/G/J
+    Column("medigap_n_office_copay_cents", Cents, nullable=False),  # Plan N: up to, per office visit
+    Column("medigap_n_er_copay_cents", Cents, nullable=False),  # Plan N: up to, per ER visit not admitted
+    Column("src_ref", JSON, nullable=False),  # {group: src_ref} for part_b, part_a, medigap_hd, medigap_n
+)
+
 PLAN_TABLES = (
     "ingest_run",
     "county",
@@ -253,6 +323,10 @@ PLAN_TABLES = (
     "insulin_cost",
     "drug_price_proxy",
     "part_d_params",
+    "medicare_params",
+    "plan_dental",
+    "directory_endpoint",
+    "insurance_plan_map",
 )
 
 # ---------------------------------------------------------------- user and session data (saved mode only)

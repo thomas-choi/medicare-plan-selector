@@ -18,7 +18,8 @@ DEV_ZIP_FILE = BACKEND_DIR / "tests" / "fixtures" / "hud" / "zip_county_dev.csv"
 
 LAYOUT = {
     "S1": {"landscape": "landscape.csv"},
-    "S2": {"plan_area": "plan_area.txt", "b7": "b7.txt", "b4": "b4.txt", "b9": "b9.txt", "b1a": "b1a.txt"},
+    "S2": {"plan_area": "plan_area.txt", "b7": "b7.txt", "b4": "b4.txt", "b9": "b9.txt", "b1a": "b1a.txt",
+           "b16": "b16.txt"},
     "S3": {"geo": "geo.txt", "plan_info": "plan_info.txt", "formulary": "formulary.txt", "cost": "cost.txt",
            "insulin": "insulin.txt"},
     "XW1": {"penetration": "penetration.csv"},

@@ -62,11 +62,11 @@ def test_golden_maricopa(api: Engine) -> None:
 
 
 def test_h0028_028_0_by_hand(api: Engine) -> None:
-    """Hand check of the golden plan: $0 premiums, Part B placeholder, tier-1 $0 generic, tier-3 17% brand with
-    an unknown price ($100/month low band) after the $325 deductible, medium utilization copays."""
+    """Hand check of the golden plan: $0 premiums, the 2027 Part B premium ($209.40), tier-1 $0 generic, tier-3 17%
+    brand with an unknown price ($100/month low band) after the $325 deductible, medium utilization copays."""
     rows = {r["plan_key"]: r for r in _run(api, "03060", CostProfile(drugs=DRUGS, utilization="medium"))}
     g = rows["H0028_028_0"]
-    part_b = 20_290 * 12
+    part_b = 20_940 * 12
     drug_low = 3 * 10_000 + (2_500 + 1_275) + 8 * 1_700
     medical_low = 4 * 3_500 + 5_000 + 13_000
     assert g["drug_low_cents"] == drug_low == 47_375

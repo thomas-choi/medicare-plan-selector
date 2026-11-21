@@ -19,6 +19,7 @@ SELECTOR := @cd backend && $(LOAD_ENV) env $(DEV_DB) uv run selector
 NODE_BIN := ./node_modules/.bin
 
 .PHONY: help frontend-deps stack-up local-stack-up stack-down lint test test-fast test-backend test-frontend migrate ingest-dev ingest \
+        directories-sync \
         api-dev web-dev dev-data app-up app-down app-logs precommit build-frontend purge smoke \
         prod-config prod-build prod-up prod-down prod-logs
 
@@ -32,7 +33,9 @@ DEVDB := $(LOAD_ENV) . $(CURDIR)/scripts/devdb.sh;
 # would silently wipe the schema and data. To apply a changed mysql/redis config: make stack-down && make stack-up.
 # When .env points the URLs at another machine (e.g. ml3090 using ml3060's stack), only check that it answers.
 stack-up:  ## MySQL 8.4 (:3307) and Redis 7.4 (:6380, no persistence) for the app; local, or the remote one in .env
-	@$(DEVDB) if [ -n "$$DEV_DB_REMOTE" ]; then devdb_check_remote; else $(MAKE) --no-print-directory local-stack-up; fi
+	@$(DEVDB) if [ -n "$$DEV_DB_REMOTE" ]; then \
+	  [ -n "$$DEV_REDIS_REMOTE" ] || $(COMPOSE) up -d --wait --no-recreate redis; devdb_check_remote; \
+	else $(MAKE) --no-print-directory local-stack-up; fi
 
 # Always this machine's stack: the backend tests create msp_test_* databases and drive `docker compose` themselves.
 local-stack-up:
@@ -75,9 +78,14 @@ migrate:  ## upgrade the schema and apply role grants (uses MIGRATOR_DATABASE_UR
 ingest-dev: migrate  ## dev data: committed CMS sample fixtures (Maricopa, AZ) + dev ZIP→county rows, no network
 	$(SELECTOR) ingest --year 2027 --fixtures
 	$(SELECTOR) hud load-file tests/fixtures/hud/zip_county_dev.csv --year 2026 --quarter 2
+	$(SELECTOR) directories sync --year 2027 --seed-only
 
 ingest: migrate  ## real CMS 2027 ingest (downloads ~hundreds of MB the first time)
 	$(SELECTOR) ingest --year 2027
+	$(SELECTOR) directories sync --year 2027 --seed-only
+
+directories-sync:  ## map carriers' public provider directories (UHC, Humana) to 2027 plans (network, ~1 req/s/host)
+	$(SELECTOR) directories sync --year 2027
 
 purge:  ## retention purge (Saved sessions idle > RETENTION_DAYS, old feedback)
 	$(SELECTOR) purge

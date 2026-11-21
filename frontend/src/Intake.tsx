@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, ApiError, type County, type Drug, type Pharmacy, type Profile } from "./api";
+import { api, ApiError, type County, type Drug, type Pharmacy, type Profile, type Provider } from "./api";
 
 interface Props {
   profile: Profile;
@@ -33,6 +33,17 @@ export function Intake({ profile, maxDrugs, maxProviders, busy, onSubmit }: Prop
   const [manualRx, setManualRx] = useState("");
   const [rxErr, setRxErr] = useState<string | null>(null);
   const [doctor, setDoctor] = useState("");
+  const [doctorFirst, setDoctorFirst] = useState("");
+  const [docCands, setDocCands] = useState<{ npi: string; name: string; specialty: string; city: string }[]>(
+    [],
+  );
+  const [docStatus, setDocStatus] = useState<
+    | { kind: "idle" }
+    | { kind: "searching" }
+    | { kind: "found"; n: number }
+    | { kind: "empty" }
+    | { kind: "error"; message: string }
+  >({ kind: "idle" });
   const [err, setErr] = useState<string | null>(null);
 
   const set = (u: Partial<Profile>) => setP((old) => ({ ...old, ...u }));
@@ -107,6 +118,34 @@ export function Intake({ profile, maxDrugs, maxProviders, busy, onSubmit }: Prop
     if (p.drugs.some((d) => d.rxcui === rx)) return setRxErr(`RxCUI ${rx} is already on your list.`);
     const name = drugQ.trim().length >= 2 ? drugQ.trim().slice(0, 120) : `RxCUI ${rx}`;
     addDrug({ name, rxcui: rx });
+  }
+
+  // Doctor search sends only the name and the state (NPPES, DESIGN §2); picking one stores its NPI.
+  async function searchDoctor() {
+    const last = doctor.trim();
+    if (last.length < 2)
+      return setDocStatus({ kind: "error", message: "Type at least 2 letters of the last name." });
+    setDocStatus({ kind: "searching" });
+    try {
+      const r = await api.providers(last, doctorFirst.trim(), p.state ?? "");
+      setDocCands(r.candidates);
+      setDocStatus(r.candidates.length ? { kind: "found", n: r.candidates.length } : { kind: "empty" });
+    } catch (e) {
+      setDocCands([]);
+      setDocStatus({
+        kind: "error",
+        message: `${e instanceof ApiError ? e.message : "Doctor search failed."} You can still add the name.`,
+      });
+    }
+  }
+
+  function addDoctor(d: Provider) {
+    if (p.providers.length >= maxProviders) return setErr(`Up to ${maxProviders} doctors.`);
+    set({ providers: [...p.providers, { must_keep: false, ...d }] });
+    setDocCands([]);
+    setDoctor("");
+    setDoctorFirst("");
+    setDocStatus({ kind: "idle" });
   }
 
   const updateDrug = (i: number, u: Partial<Drug>) =>
@@ -277,27 +316,91 @@ export function Intake({ profile, maxDrugs, maxProviders, busy, onSubmit }: Prop
       <h3>Doctors (optional)</h3>
       <div className="row">
         <input
-          placeholder="Doctor's name"
+          placeholder="Last name"
           value={doctor}
           onChange={(e) => setDoctor(e.target.value)}
-          aria-label="Doctor name"
-        />
-        <button
-          type="button"
-          disabled={!doctor.trim() || p.providers.length >= maxProviders}
-          onClick={() => {
-            set({ providers: [...p.providers, { name: doctor.trim() }] });
-            setDoctor("");
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void searchDoctor();
+            }
           }}
-        >
-          Add
+          aria-label="Doctor last name"
+        />
+        <input
+          placeholder="First name (optional)"
+          value={doctorFirst}
+          onChange={(e) => setDoctorFirst(e.target.value)}
+          aria-label="Doctor first name"
+        />
+        <button type="button" onClick={searchDoctor} disabled={docStatus.kind === "searching"}>
+          {docStatus.kind === "searching" ? "Searching…" : "Find doctor"}
         </button>
       </div>
+      <p className="hint" role="status" aria-live="polite" aria-label="Doctor search status">
+        {docStatus.kind === "searching" && "Searching the national doctor registry (NPPES)…"}
+        {docStatus.kind === "found" &&
+          `${docStatus.n} match(es)${p.state ? ` in ${p.state}` : ""}. Pick yours below.`}
+        {docStatus.kind === "empty" &&
+          "No doctor found. Check the spelling, or add the name without checking plan directories."}
+      </p>
+      {docStatus.kind === "error" && (
+        <p role="alert" className="error">
+          {docStatus.message}
+        </p>
+      )}
+      {docCands.length > 0 && (
+        <ul className="candidates" aria-label="Doctor matches">
+          {docCands.map((c) => (
+            <li key={c.npi}>
+              <button
+                type="button"
+                disabled={p.providers.length >= maxProviders || p.providers.some((d) => d.npi === c.npi)}
+                onClick={() => addDoctor({ name: c.name, npi: c.npi, specialty: c.specialty, city: c.city })}
+              >
+                Add {c.name}
+                {c.specialty ? `, ${c.specialty}` : ""}
+                {c.city ? `, ${c.city}` : ""}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {(docStatus.kind === "empty" || docStatus.kind === "error") && doctor.trim() && (
+        <button
+          type="button"
+          disabled={p.providers.length >= maxProviders}
+          onClick={() => addDoctor({ name: [doctorFirst.trim(), doctor.trim()].filter(Boolean).join(" ") })}
+        >
+          Add “{[doctorFirst.trim(), doctor.trim()].filter(Boolean).join(" ")}” without checking
+        </button>
+      )}
       {p.providers.length > 0 && (
-        <ul className="drugs">
+        <ul className="drugs" aria-label="Your doctors">
           {p.providers.map((d, i) => (
-            <li key={i}>
-              <span>{d.name}</span>
+            <li key={`${d.npi ?? d.name}-${i}`}>
+              <span>
+                {d.name}
+                {d.specialty ? ` (${d.specialty})` : ""}
+                {!d.npi && <span className="sub"> not checked</span>}
+              </span>
+              {d.npi && (
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    aria-label={`Must keep ${d.name}`}
+                    checked={!!d.must_keep}
+                    onChange={(e) =>
+                      set({
+                        providers: p.providers.map((x, j) =>
+                          j === i ? { ...x, must_keep: e.target.checked } : x,
+                        ),
+                      })
+                    }
+                  />{" "}
+                  Must keep
+                </label>
+              )}
               <button type="button" onClick={() => set({ providers: p.providers.filter((_, j) => j !== i) })}>
                 Remove
               </button>
@@ -305,7 +408,18 @@ export function Intake({ profile, maxDrugs, maxProviders, busy, onSubmit }: Prop
           ))}
         </ul>
       )}
-      <p className="hint">Public CMS files don’t list networks. Call each plan to confirm your doctors.</p>
+      <p className="hint">
+        For doctors you pick from the search, we check each plan’s public directory. Directories can be out of
+        date: always call the plan to confirm your doctors.
+      </p>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={!!p.must_haves.doctors_listed}
+          onChange={(e) => set({ must_haves: { ...p.must_haves, doctors_listed: e.target.checked } })}
+        />{" "}
+        Only plans whose directory lists all my must-keep doctors
+      </label>
 
       <h3>Preferences</h3>
       <div className="grid2">
@@ -358,6 +472,63 @@ export function Intake({ profile, maxDrugs, maxProviders, busy, onSubmit }: Prop
           </select>
         </label>
       </div>
+      <h3>Standard option: Original Medicare + Part D</h3>
+      <p className="hint">
+        Every comparison includes Original Medicare (Parts A and B) with the lowest-cost drug plan for your
+        drugs. You can add a Medigap policy to it as an assumption.
+      </p>
+      <div className="grid2">
+        <label>
+          Medigap policy
+          <select
+            aria-label="Medigap policy"
+            value={p.medigap?.plan ?? ""}
+            onChange={(e) =>
+              set({
+                medigap: {
+                  plan: (e.target.value || null) as "G" | "N" | "HDG" | null,
+                  monthly_premium_cents: e.target.value ? (p.medigap?.monthly_premium_cents ?? null) : null,
+                },
+              })
+            }
+          >
+            <option value="">None</option>
+            <option value="G">Plan G</option>
+            <option value="N">Plan N</option>
+            <option value="HDG">High-deductible Plan G</option>
+          </select>
+        </label>
+        {p.medigap?.plan && (
+          <label>
+            Your Medigap quote, $ per month (optional)
+            <input
+              aria-label="Medigap monthly premium quote"
+              inputMode="decimal"
+              placeholder="e.g. 145"
+              value={
+                p.medigap.monthly_premium_cents != null
+                  ? (p.medigap.monthly_premium_cents / 100).toString()
+                  : ""
+              }
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                set({
+                  medigap: {
+                    plan: p.medigap?.plan ?? null,
+                    monthly_premium_cents: Number.isFinite(v) && v >= 0 ? Math.round(v * 100) : null,
+                  },
+                });
+              }}
+            />
+          </label>
+        )}
+      </div>
+      {p.medigap?.plan && p.medigap.monthly_premium_cents == null && (
+        <p className="hint">
+          CMS doesn’t publish Medigap prices, so the premium isn’t included until you enter a quote (your SHIP
+          can help you get one).
+        </p>
+      )}
       <label className="check">
         <input
           type="checkbox"
@@ -365,6 +536,36 @@ export function Intake({ profile, maxDrugs, maxProviders, busy, onSubmit }: Prop
           onChange={(e) => set({ must_haves: { ...p.must_haves, all_drugs_covered: e.target.checked } })}
         />{" "}
         Only plans that cover all my drugs
+      </label>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={!!p.must_haves.dental}
+          onChange={(e) => set({ must_haves: { ...p.must_haves, dental: e.target.checked } })}
+        />{" "}
+        Only plans that include dental (at least cleanings and exams)
+      </label>
+      <label>
+        Dental yearly maximum at least, $ (optional)
+        <input
+          aria-label="Minimum dental yearly maximum"
+          inputMode="numeric"
+          placeholder="e.g. 1000"
+          value={
+            p.must_haves.dental_min_max_cents != null
+              ? (p.must_haves.dental_min_max_cents / 100).toString()
+              : ""
+          }
+          onChange={(e) => {
+            const v = parseFloat(e.target.value);
+            set({
+              must_haves: {
+                ...p.must_haves,
+                dental_min_max_cents: Number.isFinite(v) && v >= 0 ? Math.round(v * 100) : null,
+              },
+            });
+          }}
+        />
       </label>
       {err && (
         <p role="alert" className="error">

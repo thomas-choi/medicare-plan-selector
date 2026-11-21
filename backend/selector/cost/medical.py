@@ -1,5 +1,6 @@
 """Medical cost estimate (DESIGN §6.1): MA copays/coinsurance × a utilization preset, capped at the MOOP;
-Original Medicare (no Medigap) as Part B deductible + 20% and the Part A deductible, with no yearly cap."""
+Original Medicare (no Medigap) as Part B deductible + 20% and the Part A deductible, with no yearly cap.
+Amounts per plan year come from `medicare_params` (addendum A5.2)."""
 
 from __future__ import annotations
 
@@ -9,9 +10,9 @@ from typing import Any
 
 from selector.cost.params import (
     ALLOWED_CENTS,
-    PART_A_DEDUCTIBLE_CENTS,
     PART_B_COINSURANCE_PCT,
     UTILIZATION,
+    MedicareParams,
 )
 from selector.cost.part_d import round_cents
 
@@ -119,25 +120,32 @@ def ma_medical(med: PlanMedical, utilization: str) -> MedicalResult:
     return MedicalResult(capped_low, capped_high, high, moop, lines, refs, notes)
 
 
-def original_medical(utilization: str, part_b_deductible_cents: int) -> MedicalResult:
+def original_medical(utilization: str, mp: MedicareParams) -> MedicalResult:
+    """Part B deductible + Part B coinsurance on the assumed allowed amounts, and the Part A deductible for an
+    assumed hospital stay (one benefit period). No yearly cap without Medigap."""
     use = UTILIZATION[utilization]
     lines: dict[str, tuple[int, int]] = {}
     allowed_b = sum(ALLOWED_CENTS[s] * use[s] for s in SERVICES)
     if allowed_b:
-        ded = min(allowed_b, part_b_deductible_cents)
-        coins = _pct(allowed_b - ded, PART_B_COINSURANCE_PCT)
+        ded = min(allowed_b, mp.part_b_deductible_cents)
+        coins = _pct(allowed_b - ded, mp.part_b_coins_pct)
         lines["part_b"] = (ded + coins, ded + coins)
     if use["inpatient_days"]:
-        lines["inpatient"] = (PART_A_DEDUCTIBLE_CENTS, PART_A_DEDUCTIBLE_CENTS)
+        lines["inpatient"] = (mp.part_a_deductible_cents, mp.part_a_deductible_cents)
     low = sum(v[0] for v in lines.values())
+    refs = [mp.ref("part_b")] + ([mp.ref("part_a")] if use["inpatient_days"] else [])
     return MedicalResult(
         low,
         low,
         low,
         None,
         lines,
-        [{"source": "params", "vintage": "Original Medicare 2026 placeholders", "row": "part_a_b_cost_sharing"}],
-        [
-            "Original Medicare without a Medigap policy has no yearly out-of-pocket cap (Medigap quotes: post-MVP).",
-        ],
+        refs,
+        ["Original Medicare without a Medigap policy has no yearly out-of-pocket cap."],
     )
+
+
+def original_allowed_b_cents(utilization: str) -> int:
+    """Assumed Medicare-approved amount for the Part B services of a utilization preset (for Medigap rules)."""
+    use = UTILIZATION[utilization]
+    return sum(ALLOWED_CENTS[s] * use[s] for s in SERVICES)

@@ -35,7 +35,7 @@ export interface Profile {
   state?: string | null;
   path: "ma" | "original" | "both";
   drugs: Drug[];
-  providers: { name: string; npi?: string | null }[];
+  providers: Provider[];
   utilization: "low" | "medium" | "high";
   pharmacy_preference: Pharmacy;
   must_haves: {
@@ -44,9 +44,29 @@ export interface Profile {
     min_stars?: number | null;
     max_moop_cents?: number | null;
     max_monthly_premium_cents?: number | null;
+    dental?: boolean;
+    dental_min_max_cents?: number | null;
+    doctors_listed?: boolean;
   };
+  weights?: {
+    total_cost?: number;
+    worst_case?: number;
+    stars?: number;
+    must_have_fit?: number;
+    doctor_fit?: number;
+  };
+  medigap?: { plan: "G" | "N" | "HDG" | null; monthly_premium_cents?: number | null };
   snp_eligible?: boolean;
   current_plan_key?: string | null;
+}
+
+/** A doctor: free-text name, or picked from the NPI registry (then `npi` is set). */
+export interface Provider {
+  name: string;
+  npi?: string | null;
+  must_keep?: boolean;
+  specialty?: string | null;
+  city?: string | null;
 }
 
 export const emptyProfile = (): Profile => ({
@@ -73,6 +93,43 @@ export interface DrugRow {
   annual_low_cents: number;
   annual_high_cents: number;
   notes: string[];
+}
+
+/** Plan dental benefits from the CMS PBP file b16 (addendum A4). `null` on a row = no dental benefit listed. */
+export interface Dental {
+  summary: string;
+  has_preventive: boolean;
+  has_comprehensive: boolean;
+  max_cents: number | null;
+  max_period: string | null;
+  max_shared: boolean | null;
+  optional_supplemental: boolean;
+  services?: {
+    code: string;
+    label: string;
+    group: "preventive" | "comprehensive" | "medicare_covered";
+    cost: string;
+    limit_text: string | null;
+  }[];
+  src_ref?: Record<string, unknown>;
+}
+
+/** A doctor's directory listing status for one plan (addendum A3.3). */
+export interface DoctorStatus {
+  npi: string;
+  name: string;
+  must_keep?: boolean;
+  status: "listed" | "not_listed" | "unknown" | "unavailable" | "original_medicare" | "opted_out" | "no_npi";
+  text: string;
+  checked_at: string | null;
+}
+
+export interface BaselineComponent {
+  kind: "part_a" | "part_b" | "pdp" | "medigap";
+  label: string;
+  plan_key?: string;
+  monthly_cents: number | null;
+  annual_cents: number | null;
 }
 
 export interface PlanRow {
@@ -102,11 +159,24 @@ export interface PlanRow {
   dropped_reason: string | null;
   rank: number | null;
   notes: string[];
+  delta_vs_baseline_cents?: number | null;
+  dental?: Dental | null;
+  doctors?: DoctorStatus[];
+  // Only on the pinned baseline row (canvas.baseline):
+  is_baseline?: boolean;
+  pinned?: boolean;
+  pdp_plan_key?: string | null;
+  pdp_plan_name?: string | null;
+  part_b_deductible_cents?: number;
+  part_a_deductible_cents?: number;
+  components?: BaselineComponent[];
+  medigap?: { plan: string | null; premium_included: boolean; rule_note: string };
 }
 
 export interface Canvas {
   tab?: "table" | "chart" | "side_by_side" | "checklist";
   rows?: PlanRow[];
+  baseline?: PlanRow;
   top?: string[];
   selected?: string[];
   notes?: string[];
@@ -189,6 +259,14 @@ export const api = {
   counties: (state: string) =>
     call<{ counties: County[] }>("GET", `/api/counties?state=${encodeURIComponent(state)}`),
   drugs: (q: string) => call<DrugSearch>("GET", `/api/drugs?q=${encodeURIComponent(q)}`),
+  providers: (lastName: string, firstName: string, state: string) =>
+    call<{
+      candidates: { npi: string; name: string; specialty: string; city: string; state: string }[];
+      note: string;
+    }>(
+      "GET",
+      `/api/providers?last_name=${encodeURIComponent(lastName)}&first_name=${encodeURIComponent(firstName)}&state=${encodeURIComponent(state)}`,
+    ),
   compare: (profile?: Profile) =>
     call<{
       canvas: Canvas;
@@ -198,6 +276,11 @@ export const api = {
       data_vintage: string;
       recommendation_ids: string[];
     }>("POST", "/api/compare", profile ? { profile } : {}),
+  dental: (planKey: string) =>
+    call<{ plan_key: string; dental: Dental; note: string }>(
+      "GET",
+      `/api/plans/${encodeURIComponent(planKey)}/benefits?category=dental`,
+    ),
   feedback: (body: Record<string, unknown>) =>
     call<{ stored: string; linked: boolean }>("POST", "/api/feedback", body),
 };
