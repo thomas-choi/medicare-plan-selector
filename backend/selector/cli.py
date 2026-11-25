@@ -6,6 +6,10 @@ import argparse
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from selector.geo.hud import ZipCounty
 
 from selector.config import get_settings
 
@@ -38,10 +42,33 @@ def cmd_db_grants(args: argparse.Namespace) -> int:
     from selector.db import make_engine
     from selector.grants import apply_grants
 
-    url = get_settings().effective_migrator_url
+    s = get_settings()
+    url = s.effective_migrator_url
     schema = make_url(url).database or "msp"
-    with make_engine(url).begin() as conn:
-        n = apply_grants(conn, schema, args.ingest_user, args.api_user)
+    # Users default to the ones named in INGEST_DATABASE_URL / DATABASE_URL (the dev defaults when those are unset).
+    ingest_user = args.ingest_user or (make_url(s.ingest_database_url).username if s.ingest_database_url else None)
+    ingest_user = ingest_user or "msp_ingest"
+    api_user = args.api_user or make_url(s.database_url).username or "msp_api"
+    # Any user works for any role. A role that uses the migrator's own user needs no grants (it has every right);
+    # separate ingest/API users get table-level rights, the API user read-only on plan tables (DESIGN §4).
+    migrator_user = make_url(url).username
+    ingest = None if ingest_user == migrator_user else ingest_user
+    api = None if api_user == migrator_user else api_user
+    if ingest is None and api is None:
+        print(f"db-grants: ingest and API use the migrator user ({migrator_user}); no grants needed")
+        return 0
+    from sqlalchemy.exc import DBAPIError
+
+    try:
+        with make_engine(url).begin() as conn:
+            n = apply_grants(conn, schema, ingest, api)
+    except DBAPIError as e:
+        # 1044/1142/1410: the migrator may not grant (e.g. a DO panel user without GRANT OPTION). The users then
+        # keep the rights the database admin gave them; migrate and ingest still work.
+        if getattr(e.orig, "args", [None])[0] not in (1044, 1142, 1410):
+            raise
+        print(f"db-grants: WARNING: {migrator_user} may not grant rights ({e.orig}); skipped", file=sys.stderr)
+        return 0
     print(f"applied {n} grants on {schema}")
     return 0
 
@@ -95,7 +122,9 @@ def cmd_purge(args: argparse.Namespace) -> int:
 
 
 def cmd_ingest(args: argparse.Namespace) -> int:
-    from selector.db import make_engine
+    import logging
+
+    from selector.db import ingest_engine_for
     from selector.ingest.manifest import LockMismatch
     from selector.ingest.run import run_ingest
     from selector.ingest.validate import ValidationFailed
@@ -110,11 +139,14 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         kwargs["fetched"] = fixture_fetched(root)
         # Fixture runs never touch the real sources.lock.
         kwargs["lock_path"] = Path(tempfile.mkdtemp(prefix="msp-devlock-")) / "sources.lock"
+    # Progress and reconnect messages from selector.ingest (a real load can take a while over a long link).
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
     try:
         res = run_ingest(
-            make_engine(get_settings().effective_ingest_url),
+            ingest_engine_for(get_settings().effective_ingest_url),
             args.year,
             accept_new=args.accept_new,
+            full=args.full,
             offline=args.offline,
             **kwargs,  # type: ignore[arg-type]
         )
@@ -128,22 +160,44 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     return 0
 
 
+def _store_zip_rows(rows: Sequence[ZipCounty]) -> int:
+    """Upsert ZIP→county rows 1,000 per transaction, reconnecting on a stuck link like `selector ingest` (an upsert
+    can be sent again safely)."""
+    from sqlalchemy import Connection
+
+    from selector.db import ingest_engine_for
+    from selector.geo.hud import store_zip_counties
+    from selector.ingest.load import _in_transaction
+
+    engine = ingest_engine_for(get_settings().effective_ingest_url)
+    total = 0
+    for i in range(0, len(rows), 1000):
+        chunk = list(rows[i : i + 1000])
+
+        def work(conn: Connection, chunk: list[ZipCounty] = chunk) -> int:
+            return store_zip_counties(conn, chunk)
+
+        total += _in_transaction(engine, f"zip_county_cache rows {i + 1:,}-{i + len(chunk):,} of {len(rows):,}", work)
+    engine.dispose()
+    return total
+
+
 def cmd_hud_preload(args: argparse.Namespace) -> int:
-    from selector.db import make_engine
-    from selector.geo.hud import HudClient, store_zip_counties
+    from selector.geo.hud import HudClient
 
     s = get_settings()
-    client = HudClient(s.hud_api_token.get_secret_value(), s.hud_api_base)
-    rows = client.state_counties(args.state)
-    with make_engine(s.effective_ingest_url).begin() as conn:
-        n = store_zip_counties(conn, rows)
+    token = s.hud_api_token.get_secret_value()
+    if not token:
+        print("HUD_API_TOKEN is not set (docs/design/HUD-API-SETUP.md); or load a HUD file: "
+              "make zip-data HUD_FILE=ZIP_COUNTY_<MMYYYY>.xlsx", file=sys.stderr)  # fmt: skip
+        return 2
+    rows = HudClient(token, s.hud_api_base).state_counties(args.state)
+    n = _store_zip_rows(rows)
     print(f"cached {n} ZIP-county rows for {args.state}")
     return 0
 
 
 def cmd_hud_load_file(args: argparse.Namespace) -> int:
-    from selector.db import make_engine
-    from selector.geo.hud import store_zip_counties
     from selector.geo.hud_file import HudFileError, read_hud_file
 
     try:
@@ -155,10 +209,7 @@ def cmd_hud_load_file(args: argparse.Namespace) -> int:
         from selector.geo.hud_file import state_filter
 
         rows = state_filter(rows, args.state)
-    total = 0
-    with make_engine(get_settings().effective_ingest_url).begin() as conn:
-        for i in range(0, len(rows), 2000):
-            total += store_zip_counties(conn, rows[i : i + 2000])
+    total = _store_zip_rows(rows)
     print(f"cached {total} ZIP-county rows from {Path(args.path).name}")
     return 0
 
@@ -198,13 +249,16 @@ def build_parser() -> argparse.ArgumentParser:
     m.set_defaults(func=cmd_migrate)
 
     g = sub.add_parser("db-grants", help="apply table-level grants for the ingest and API roles")
-    g.add_argument("--ingest-user", default="msp_ingest")
-    g.add_argument("--api-user", default="msp_api")
+    g.add_argument("--ingest-user", default=None, help="default: user in INGEST_DATABASE_URL, else msp_ingest")
+    g.add_argument("--api-user", default=None, help="default: user in DATABASE_URL")
     g.set_defaults(func=cmd_db_grants)
 
     i = sub.add_parser("ingest", help="fetch, validate and load one plan year of CMS data")
     i.add_argument("--year", type=int, required=True)
     i.add_argument("--accept-new", action="store_true", help="accept sources that differ from sources.lock")
+    i.add_argument(
+        "--full", action="store_true", help="reload every table, even ones already loaded with the same rows"
+    )
     i.add_argument("--offline", action="store_true", help="reuse files already in data/raw/<year>")
     i.add_argument(
         "--fixtures",

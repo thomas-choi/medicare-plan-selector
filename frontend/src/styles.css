@@ -411,3 +411,28 @@ line.worst {
 .doc-opted_out {
   color: #8a4b00;
 }
+.info-dialog {
+  max-width: 720px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.glossary dt {
+  font-weight: 600;
+  margin-top: 10px;
+}
+.glossary dd {
+  margin: 2px 0 0 0;
+}
+.info-example {
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+.info-example th,
+.info-example td {
+  border-bottom: 1px solid var(--border);
+  padding: 4px 8px;
+  text-align: left;
+}
+.info-example tr.total td {
+  font-weight: 600;
+}

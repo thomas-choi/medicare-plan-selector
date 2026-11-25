@@ -153,6 +153,16 @@ def test_demo_fake_provider_full_turn(engine: Engine) -> None:
     assert [u[0] for u in res.usage] == ["fake", "fake"]
 
 
+def test_demo_fake_provider_answers_a_column_question_from_the_glossary(engine: Engine) -> None:
+    prov = FakeProvider()
+    res = Orchestrator([prov]).run_turn(ctx(engine), [], 'What is the column "Est. yearly cost"?')
+    assert res.validation == "ok" and res.tool_calls == []
+    assert res.text.startswith("Est. yearly cost: What a typical year could cost you")
+    assert "- **Est. yearly cost**: " in prov.calls[0][0]  # the glossary is in the system prompt for a real model too
+    res = Orchestrator([FakeProvider()]).run_turn(ctx(engine), [], "Is the worst case my deductible?")
+    assert res.text.startswith("Worst case: ") and "\n\nDeductible: " in res.text
+
+
 def test_transcript_replay(engine: Engine) -> None:
     for path in sorted(TRANSCRIPTS.glob("*.json")):
         t = json.loads(path.read_text())

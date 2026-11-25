@@ -16,6 +16,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from selector import glossary
 from selector.agent import tools as T
 from selector.agent.policy import ESTIMATE_DISCLAIMER, needs_estimate_disclaimer, sanitize, wrap_user_text
 from selector.agent.prompts import PROMPT_VERSION, system_prompt
@@ -105,7 +106,9 @@ class Orchestrator:
 
     def run_turn(self, ctx: T.ToolContext, history: list[ChatMessage], user_text: str) -> TurnResult:
         system = system_prompt().format(
-            plan_year=ctx.plan_year, profile=json.dumps(ctx.profile.summary_for_prompt(), ensure_ascii=False)
+            plan_year=ctx.plan_year,
+            profile=json.dumps(ctx.profile.summary_for_prompt(), ensure_ascii=False),
+            glossary=glossary.prompt_block(),
         )
         msgs = [m for m in history[-HISTORY_TURNS * 2 :] if m.role in ("user", "assistant") and not m.tool_calls]
         msgs.append(ChatMessage("user", wrap_user_text(user_text, ctx.settings.max_message_chars)))

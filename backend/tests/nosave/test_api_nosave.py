@@ -114,6 +114,7 @@ def test_requests_without_session_are_rejected(fixture_db: dict[str, str]) -> No
     cfg = c.get("/api/config").json()
     assert cfg["default_mode"] == "nosave" and cfg["modes"] == ["nosave", "saved"] and cfg["llm_enabled"]
     assert cfg["checklist"] and cfg["llm_provider_label"]
+    assert [g["title"] for g in cfg["glossary"]][:2] == ["Est. yearly cost", "Worst case"]
 
 
 def test_ns4_config_defaults_to_nosave_while_saved_is_offered(

@@ -66,8 +66,8 @@ export function comparisonMarkdown(
   return out.join("\n");
 }
 
-export function download(name: string, text: string): void {
-  const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+export function download(name: string, text: string, type = "text/markdown;charset=utf-8"): void {
+  const blob = new Blob([text], { type });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

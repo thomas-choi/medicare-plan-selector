@@ -175,34 +175,71 @@ _SAVED_ENV = (
     "COMPOSE_DATABASE_URL=mysql+pymysql://msp_api:x@mysql:3306/msp\n"
     "COMPOSE_REDIS_URL=redis://:x@redis:6379/0\n"
 )
+# .env.prod for DigitalOcean Managed MySQL: no MySQL container, TLS with the DO CA certificate.
+_DO_CA = "./cert/do.ca.crt"  # MSP_DB_CA_FILE, relative to the repo root
+_PROD_SAVED_ENV = (
+    "DEFAULT_SESSION_MODE=saved\n"
+    "REDIS_PASSWORD=not-a-secret\n"
+    f"MSP_DB_CA_FILE={_DO_CA}\n"
+    "DATABASE_URL=mysql+pymysql://msp_api:x@db-mysql-example.db.ondigitalocean.com:25060/msp\n"
+)
 
 
-def _rendered_session_mode(tmp_path: Path, compose_file: str, *extra: str) -> dict[str, str | None]:
-    """`docker compose config` of a repo compose file next to a `.env` that asks for Saved; mode per service."""
+def _render(tmp_path: Path, compose_file: str, env_files: dict[str, str], *args: str) -> dict[str, dict]:
+    """`docker compose <args> config` of a repo compose file in `tmp_path` next to `env_files`; services."""
     docker = shutil.which("docker")
     if not docker or subprocess.run([docker, "compose", "version"], capture_output=True).returncode:  # noqa: S603
         pytest.skip("docker compose is not installed")
     shutil.copy(REPO_ROOT / compose_file, tmp_path / compose_file)
-    (tmp_path / ".env").write_text(_SAVED_ENV, encoding="utf-8")
+    for name, text_ in env_files.items():
+        (tmp_path / name).write_text(text_, encoding="utf-8")
     env = {k: v for k, v in os.environ.items() if not k.startswith(("COMPOSE_", "DEFAULT_SESSION_MODE"))}
+    env = {k: v for k, v in env.items() if k not in ("MYSQL_ROOT_PASSWORD", "REDIS_PASSWORD")}
     out = subprocess.run(  # noqa: S603
-        [docker, "compose", "-f", str(tmp_path / compose_file), *extra, "config", "--format", "json"],
+        [docker, "compose", *args, "-f", str(tmp_path / compose_file), "config", "--format", "json"],
         cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60, check=True,
     )  # fmt: skip
-    services = json.loads(out.stdout)["services"]
+    return json.loads(out.stdout)["services"]
+
+
+def _modes(services: dict[str, dict]) -> dict[str, str | None]:
     return {name: (svc.get("environment") or {}).get("DEFAULT_SESSION_MODE") for name, svc in services.items()}
 
 
+PROD_ARGS = ("--env-file", ".env.prod")
+
+
 def test_ns2_prod_compose_pins_nosave_over_the_server_env(tmp_path: Path) -> None:
-    """NS2: a server .env with DEFAULT_SESSION_MODE=saved still renders nosave for every app container."""
-    modes = _rendered_session_mode(tmp_path, "docker-compose.prod.yml")
+    """NS2: a .env.prod with DEFAULT_SESSION_MODE=saved still renders nosave for every app container."""
+    modes = _modes(_render(tmp_path, "docker-compose.prod.yml", {".env.prod": _PROD_SAVED_ENV}, *PROD_ARGS))
     assert modes["api"] == "nosave" and modes["purge"] == "nosave"
 
 
 def test_ns3_dev_compose_pins_nosave_over_dotenv(tmp_path: Path) -> None:
     """NS3: same for the dev compose `api` service (profile `app`)."""
-    modes = _rendered_session_mode(tmp_path, "docker-compose.yml", "--profile", "app")
+    modes = _modes(_render(tmp_path, "docker-compose.yml", {".env": _SAVED_ENV}, "--profile", "app"))
     assert modes["api"] == "nosave"
+
+
+def test_prod_compose_reads_env_prod_not_the_dev_env(tmp_path: Path) -> None:
+    """Production settings come only from .env.prod; a dev .env in the same directory is ignored."""
+    assert re.search(r"env_file:\n\s*- path: \.env\.prod\n\s*required: true", COMPOSE_PROD)
+    assert not re.search(r"- path: \.env\n", COMPOSE_PROD)
+    assert re.search(r"^PROD_ENV \?= \.env\.prod$", MAKEFILE, re.M)
+    assert (
+        "COMPOSE_PROD = env $(PROD_KEYS) docker compose --env-file $(PROD_ENV) -f docker-compose.prod.yml" in MAKEFILE
+    )
+    dev = (
+        "REDIS_PASSWORD=dev-redis-pw\nDATABASE_URL=mysql+pymysql://msp_api:dev-api-pw@127.0.0.1:3307/msp\n"
+        "MSP_DB_CA_FILE=/dev/null\nDEV_ONLY=1\n"
+    )
+    prod = _PROD_SAVED_ENV.replace("REDIS_PASSWORD=not-a-secret", "REDIS_PASSWORD=prod-only-value") + "PROD_ONLY=1\n"
+    services = _render(tmp_path, "docker-compose.prod.yml", {".env": dev, ".env.prod": prod}, *PROD_ARGS)
+    assert services["redis"]["environment"]["REDIS_PASSWORD"] == "prod-only-value"
+    assert services["api"]["environment"]["REDIS_URL"] == "redis://:prod-only-value@redis:6379/0"
+    assert "ondigitalocean.com:25060" in services["api"]["environment"]["DATABASE_URL"]
+    # `config` inlines env_file into environment: the containers get .env.prod's keys and none of .env's.
+    assert services["api"]["environment"].get("PROD_ONLY") == "1" and "DEV_ONLY" not in services["api"]["environment"]
 
 
 class _StubApi(http.server.BaseHTTPRequestHandler):
@@ -249,3 +286,130 @@ def test_ns7_smoke_fails_when_config_defaults_to_saved() -> None:
 def test_ns7_smoke_accepts_a_nosave_default() -> None:
     got = _smoke_against("nosave")  # the stub has no /api/session, so the run fails at the next step
     assert "ok  GET /api/config" in got.stdout and "FAIL  GET /api/config" not in got.stderr
+
+
+@pytest.mark.parametrize(
+    ("bind", "host"),
+    [("", "127.0.0.1"), ("MSP_WEB_BIND=0.0.0.0\n", "127.0.0.1"), ("MSP_WEB_BIND=192.168.0.9\n", "192.168.0.9")],
+)
+def test_prod_up_smoke_calls_the_bound_address(tmp_path: Path, bind: str, host: str) -> None:
+    env_prod = tmp_path / ".env.prod"
+    env_prod.write_text(f"DATABASE_URL=mysql+pymysql://u:pw@h:25060/msp\n{bind}")
+    out = subprocess.run(  # noqa: S603
+        [shutil.which("make") or "make", "-n", "-s", "prod-up", f"PROD_ENV={env_prod}"],
+        cwd=REPO_ROOT, capture_output=True, text=True, timeout=30, check=True,
+    ).stdout  # fmt: skip
+    assert f'scripts/smoke.sh "http://{host}:8080"' in out
+
+
+@pytest.mark.parametrize(
+    ("extra", "tail"),
+    [([], "build"), (["api"], "build api"), (["web", "api"], "build web api"),
+     (["--", "--no-cache", "api"], "build --no-cache api")],
+)  # fmt: skip
+def test_prod_build_passes_extra_words_to_compose_build(tmp_path: Path, extra: list[str], tail: str) -> None:
+    env_prod = tmp_path / ".env.prod"
+    env_prod.write_text("DATABASE_URL=mysql+pymysql://u:pw@h:25060/msp\n")
+    out = subprocess.run(  # noqa: S603
+        [shutil.which("make") or "make", "-n", "-s", f"PROD_ENV={env_prod}", "prod-build", *extra],
+        cwd=REPO_ROOT, capture_output=True, text=True, timeout=30, check=True,
+    ).stdout  # fmt: skip
+    compose = [ln for ln in out.splitlines() if "docker compose" in ln]  # `make -n` also lists the no-op `:`
+    assert len(compose) == 1 and compose[0].rstrip().endswith(f"-f docker-compose.prod.yml {tail}")
+
+
+def test_smoke_rejects_an_unknown_data_mode() -> None:
+    got = subprocess.run(  # noqa: S603
+        [shutil.which("bash") or "/bin/bash", str(REPO_ROOT / "scripts" / "smoke.sh"), "http://127.0.0.1:9"],
+        capture_output=True, text=True, timeout=30, env={**os.environ, "SMOKE_DATA": "prod"},
+    )  # fmt: skip
+    assert got.returncode == 2 and "SMOKE_DATA must be sample or real" in got.stderr
+
+
+def test_make_smoke_defaults_to_sample_data() -> None:
+    out = subprocess.run(  # noqa: S603
+        [shutil.which("make") or "make", "-n", "-s", "smoke"], cwd=REPO_ROOT, capture_output=True, text=True,
+        timeout=30, check=True,
+    ).stdout  # fmt: skip
+    assert 'SMOKE_DATA="${SMOKE_DATA:-sample}" bash scripts/smoke.sh' in out
+
+
+def test_prod_compose_uses_managed_mysql_over_tls(tmp_path: Path) -> None:
+    """Production MySQL is DO Managed MySQL: no MySQL container or port, MSP_DB_CA_FILE is mounted read-only at
+    /run/msp/do.ca.crt and the containers' MSP_DB_CA_FILE names that path, and the app containers get only the API
+    role."""
+    services = _render(tmp_path, "docker-compose.prod.yml", {".env.prod": _PROD_SAVED_ENV}, *PROD_ARGS)
+    assert "mysql" not in services and "MYSQL_ROOT_PASSWORD" not in COMPOSE_PROD
+    assert [p["target"] for svc in services.values() for p in svc.get("ports", [])] == [8080]
+    for name in ("api", "purge"):
+        env = services[name]["environment"]
+        assert env["DATABASE_URL"].endswith(":25060/msp") and env["MSP_DB_CA_FILE"] == "/run/msp/do.ca.crt", name
+        assert env["INGEST_DATABASE_URL"] == "" and env["MIGRATOR_DATABASE_URL"] == "", name
+        assert [(v["source"], v["target"], v.get("read_only")) for v in services[name]["volumes"]] == [
+            (str(tmp_path / "cert" / "do.ca.crt"), "/run/msp/do.ca.crt", True)
+        ], name
+
+
+def test_prod_targets_ignore_stale_shell_copies_of_env_prod_keys(tmp_path: Path) -> None:
+    """A `DATABASE_URL` still exported in the shell (from `set -a; . ./.env.prod` with an older file) must not reach
+    Compose: every key that .env.prod defines is removed from the environment of `make prod-*`."""
+    env_prod = tmp_path / ".env.prod"
+    env_prod.write_text(
+        "# comment\nDATABASE_URL=mysql+pymysql://new:x@h/msp\nexport REDIS_PASSWORD=x\n  MSP_DB_CA_FILE=./c\n"
+    )
+    out = subprocess.run(  # noqa: S603
+        [shutil.which("make") or "make", "-n", "-s", "prod-up", f"PROD_ENV={env_prod}"],
+        cwd=REPO_ROOT, capture_output=True, text=True, timeout=30, check=True,
+        env={**os.environ, "DATABASE_URL": "mysql+pymysql://stale:x@h/msp"},
+    )  # fmt: skip
+    cmd = next(ln for ln in out.stdout.splitlines() if ln.endswith("up -d --wait"))
+    assert cmd.startswith("env -u DATABASE_URL -u REDIS_PASSWORD -u MSP_DB_CA_FILE docker compose --env-file "), cmd
+
+
+def test_prod_api_database_url_comes_only_from_env_prod(tmp_path: Path) -> None:
+    """Even `docker compose` run by hand with a stale exported DATABASE_URL gives the containers .env.prod's value:
+    the compose file no longer interpolates ${DATABASE_URL}, `env_file` supplies it."""
+    assert "${DATABASE_URL" not in COMPOSE_PROD
+    docker = shutil.which("docker")
+    if not docker or subprocess.run([docker, "compose", "version"], capture_output=True).returncode:  # noqa: S603
+        pytest.skip("docker compose is not installed")
+    shutil.copy(REPO_ROOT / "docker-compose.prod.yml", tmp_path / "docker-compose.prod.yml")
+    (tmp_path / ".env.prod").write_text(_PROD_SAVED_ENV, encoding="utf-8")
+    env = {k: v for k, v in os.environ.items() if not k.startswith("COMPOSE_")}
+    env["DATABASE_URL"] = "mysql+pymysql://stale_user:x@old-host:25060/msp"
+    out = subprocess.run(  # noqa: S603
+        [docker, "compose", "--env-file", ".env.prod", "-f", "docker-compose.prod.yml", "config", "--format", "json"],
+        cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60, check=True,
+    )  # fmt: skip
+    for name in ("api", "purge"):
+        url = json.loads(out.stdout)["services"][name]["environment"]["DATABASE_URL"]
+        assert url.startswith("mysql+pymysql://msp_api:") and "stale_user" not in url, name
+
+
+def test_prod_up_checks_the_config_waits_for_health_and_runs_the_smoke_test(tmp_path: Path) -> None:
+    env_prod = tmp_path / ".env.prod"
+    env_prod.write_text("DATABASE_URL=mysql+pymysql://u:secret-pw@h:25060/msp\nMSP_WEB_PORT=8181  # web\n")
+    out = subprocess.run(  # noqa: S603
+        [shutil.which("make") or "make", "-n", "-s", "prod-up", f"PROD_ENV={env_prod}"],
+        cwd=REPO_ROOT, capture_output=True, text=True, timeout=30, check=True,
+    ).stdout  # fmt: skip
+    lines = [ln for ln in out.splitlines() if "docker compose" in ln or "smoke.sh" in ln]
+    assert "config --quiet" in lines[0] and lines[1].endswith("up -d --wait")
+    assert 'SMOKE_DATA=real bash scripts/smoke.sh "http://127.0.0.1:8181"' in lines[2]  # real CMS data, no golden row
+    assert "secret-pw" not in out  # the URL is checked with grep, never put on a command line
+
+
+@pytest.mark.parametrize(
+    ("hud_file", "expect"), [("", "hud preload --state All"), ("x/ZIP_COUNTY_062026.xlsx", "hud load-file")]
+)
+def test_zip_data_uses_the_file_or_the_hud_api(hud_file: str, expect: str) -> None:
+    out = subprocess.run(  # noqa: S603
+        [shutil.which("make") or "make", "-n", "-s", "zip-data", f"HUD_FILE={hud_file}"],
+        cwd=REPO_ROOT, capture_output=True, text=True, timeout=30, check=True,
+    ).stdout  # fmt: skip
+    assert "hud preload --state All" in out and "hud load-file" in out  # one shell `if`, both branches
+    if hud_file:
+        assert str(REPO_ROOT / hud_file) in out  # made absolute (the command runs in backend/)
+    else:
+        assert 'if [ -n "" ]' in out
+    assert expect in out

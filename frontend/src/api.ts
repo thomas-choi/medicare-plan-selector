@@ -16,7 +16,15 @@ export interface AppConfig {
   limits: { message_chars: number; drugs: number; providers: number };
   estimate_disclaimer: string;
   checklist: string[];
+  glossary: GlossaryTerm[];
   app_version: string;
+}
+
+/** Meaning of a comparison column or term (GET /api/config; same text the assistant uses). */
+export interface GlossaryTerm {
+  id: string;
+  title: string;
+  text: string;
 }
 
 export interface Drug {

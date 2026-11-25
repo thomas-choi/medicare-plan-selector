@@ -1,7 +1,8 @@
 """Fake provider: no network, deterministic. Used by tests (scripted) and for local demos (`LLM_PROVIDER=fake`).
 
-Demo behaviour: on a user turn it calls `explain_plan` when a plan ID is mentioned, else `compare_plans`; on a tool
-result it writes a short summary using only numbers from that tool result (so the validator passes).
+Demo behaviour: on a user turn it answers a question about a table column or term from the app's glossary
+(`selector.glossary`), calls `explain_plan` when a plan ID is mentioned, else `compare_plans`; on a tool result it
+writes a short summary using only numbers from that tool result (so the validator passes).
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from collections.abc import Callable
 from typing import Any
 
 from selector.agent.providers.base import ChatMessage, Completion, ToolCall, ToolSpec, Usage
+from selector.glossary import terms_asked
 
 PLAN_KEY_RE = re.compile(r"\b([HRSE]\d{4})[-_](\d{3})(?:[-_](\d{1,3}))?\b", re.I)
 Script = list[Completion | Callable[[str, list[ChatMessage], list[ToolSpec]], Completion]]
@@ -54,6 +56,9 @@ class FakeProvider:
         if last.role == "tool":
             return self._done(self._summarize(last.tool_name or "", last.content))
         m = PLAN_KEY_RE.search(last.content)
+        if not m and (terms := terms_asked(last.content)):
+            # "What is the column Est. yearly cost?": answer from the app's glossary, no tool needed.
+            return self._done("\n\n".join(f"{t.title}: {t.text}" for t in terms[:3]))
         if m and "explain_plan" in names:
             key = f"{m.group(1).upper()}_{m.group(2)}_{int(m.group(3) or 0)}"
             return self._call("explain_plan", {"plan_key": key})

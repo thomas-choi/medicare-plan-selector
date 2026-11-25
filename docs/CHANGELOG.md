@@ -545,3 +545,298 @@ original form. Branch names in headings are where the work was first committed; 
     directory coverage (Aetna registration = Q14); legal review B10/Q9 before Nov 25; HUD CT
     verification; WP14/WP20 open and not blockers per the v0.5 ordering.
   - Docs: added `qa/QA-REPORT-v0.5-wp16-wp19.md`; dropped the scratch schema afterwards.
+
+## Production settings move to `.env.prod`
+- **When:** 2026-11-21 16:33 MST
+- **Who:** Claude (Claude Opus 5.5)
+- **Reference:** Thomas's request in chat (keep `docker-compose.prod.yml` standalone and give production its own
+  env file); DESIGN §10 deployment, `deploy/README.md`.
+- **What:**
+  - `docker-compose.prod.yml`: `env_file` is now `.env.prod` (required); the `${...:?}` messages name `.env.prod`;
+    header says to run with `--env-file .env.prod`, since Compose fills `${...}` from `./.env` otherwise.
+  - `Makefile`: `PROD_ENV ?= .env.prod`; `COMPOSE_PROD` passes `--env-file $(PROD_ENV)`; `prod-config` stops with a
+    hint when the file is missing. Host-side targets read `$(ENV_FILE)` (default `.env`), so the server runs
+    `make migrate ENV_FILE=.env.prod` / `make ingest ENV_FILE=.env.prod`.
+  - Tests (`backend/tests/unit/test_dev_tooling.py`): NS2 renders the prod compose from `.env.prod`; new
+    `test_prod_compose_reads_env_prod_not_the_dev_env` checks that a dev `.env` beside it is ignored and that the
+    Makefile passes `--env-file`. `make test`: 425 backend + 45 Vitest passed.
+  - Docs: `deploy/README.md` (server `.env` → `.env.prod`, every command), `docs/OPERATION.md`, `.env.example`,
+    dev `docker-compose.yml` comment. `.env.prod` was already git-ignored and blocked by the forbidden-files hook.
+
+## Production MySQL is DigitalOcean Managed MySQL
+- **When:** 2026-11-21 17:05 MST
+- **Who:** Claude (Claude Opus 5.5)
+- **Reference:** Thomas in chat: the production MySQL on DO has no root user, only `doadmin`; DESIGN §10,
+  `deploy/README.md`. Follows the `.env.prod` entry above.
+- **What:**
+  - `docker-compose.prod.yml`: MySQL container, its published port and the `mysql-data` volume removed;
+    `MYSQL_ROOT_PASSWORD`, `COMPOSE_DATABASE_URL` and `COMPOSE_REDIS_URL` are no longer used. Containers take
+    `DATABASE_URL` from `.env.prod` (msp_api on the DO host, port 25060, `?ssl_ca=`), build `REDIS_URL` from
+    `REDIS_PASSWORD`, and mount the DO CA certificate (`MSP_DB_CA_FILE`) read-only at the same path as on the host, so
+    host commands and containers share one set of URLs. The `api` environment now merges the `x-app` map
+    (`<<: *app-env`) instead of repeating it.
+  - Checked: SQLAlchemy/PyMySQL turns `?ssl_ca=` into a verified TLS connection (no code change); all 27 tables have
+    primary keys (DO enforces `sql_require_primary_key`); migrate and ingest use no SUPER-only SQL.
+  - Tests (`test_dev_tooling.py`): NS2 and the `.env.prod` test use a DO-shaped `.env.prod`; new
+    `test_prod_compose_uses_managed_mysql_over_tls`. `make test`: 426 backend + 45 Vitest passed.
+  - Docs: `deploy/README.md` (layout, `.env.prod` table, first-time roles created as `doadmin` through a throwaway
+    `mysql:8.4` client over TLS, trusted sources, backups), `.env.example`, `docs/OPERATION.md`.
+
+## DO CA certificate at `./cert/do.ca.crt`; first-time DB bootstrap reads `.env.prod`
+- **When:** 2026-11-23 21:00 MST
+- **Who:** Claude (Claude Opus 5.5)
+- **Reference:** Thomas in chat: move the SSL certificate to `./cert/do.ca.crt` for the bootstrap command and
+  compose, and make the bootstrap command take every user ID and password from `.env.prod` so it can be pasted
+  as is; `deploy/README.md` section 2. Follows the DO Managed MySQL entry above.
+- **What:**
+  - `docker-compose.prod.yml`: the CA bind mount's source is `./cert/do.ca.crt`; its target stays
+    `MSP_DB_CA_FILE`, now the absolute path of that file, so the `?ssl_ca=` URLs work on the host and in containers.
+  - `deploy/README.md` section 2: the `doadmin` bootstrap reads host, port, database, users and passwords
+    (URL-decoded, MySQL-quoted) from `MIGRATOR_DATABASE_URL`, `INGEST_DATABASE_URL` and `DATABASE_URL`, stops if
+    they differ in host/port/database, and mounts `$PWD/cert/do.ca.crt`. Only the `doadmin` password is typed in.
+    The old unquoted `<<SQL` heredoc (which expanded `$` and backticks in passwords) is gone. The `.env.prod` table
+    explains where to save the certificate.
+  - `.gitignore`: `/cert/`. `.env.example`: `MSP_DB_CA_FILE` example points at `cert/do.ca.crt`.
+  - Tests (`test_dev_tooling.py`): the managed-MySQL compose test expects the `./cert/do.ca.crt` source; new
+    `test_deploy_readme_bootstrap_sql_comes_from_env_prod_urls` runs the README script on sample URLs (passwords
+    with `@`, `'`, `\`, `$`, backtick). The quoting was also checked against MySQL 8.4. `make test`: 427 backend + 45
+    Vitest passed.
+  - Incident while editing: a shell heredoc in my edit command ended early and ran `make migrate ENV_FILE=.env.prod`
+    once on this machine; it stopped at login (`Access denied ... to database 'msp'`), so nothing changed.
+
+## `MSP_DB_CA_FILE` drives MySQL TLS; DB bootstrap uses only `.env.prod` variables
+- **When:** 2026-11-23 22:44 MST
+- **Who:** Claude (Claude Opus 5.5)
+- **Reference:** Thomas in chat: section 2 of `deploy/README.md` should reference the `.env.prod` variables so it can
+  be pasted into a terminal; his `.env.prod` sets `MSP_DB_CA_FILE=./cert/do.ca.crt` and URLs without `?ssl_ca=`.
+  Follows the entry above.
+- **What:**
+  - `selector/config.py`: new `MSP_DB_CA_FILE` setting (relative paths resolve from the repo root).
+    `selector/db.py` `db_connect_args`: when it is set, PyMySQL connects with `ssl={"ca": ...}` (certificate and
+    host-name checks); a missing file stops with its path; a URL with its own `ssl_ca=` keeps it. Used by
+    `make_engine` and `alembic/env.py`. URLs no longer need `?ssl_ca=`.
+  - `selector db-grants` (`make migrate`): the ingest and API users default to the users in
+    `INGEST_DATABASE_URL` / `DATABASE_URL` (was always `msp_ingest` / `msp_api`) and it refuses when migrator,
+    ingest and API are not three different users (API read-only on plan tables, DESIGN §4).
+  - `docker-compose.prod.yml`: mounts `${MSP_DB_CA_FILE}` read-only at `/run/msp/do.ca.crt` and sets the
+    containers' `MSP_DB_CA_FILE` to it.
+  - `deploy/README.md`: `.env.prod` table (`MSP_DB_CA_FILE=./cert/do.ca.crt`, URLs without `?ssl_ca=`, three
+    users, URL-encoded passwords); section 2 checks `ls -l "$MSP_DB_CA_FILE"`, mounts
+    `$(realpath "$MSP_DB_CA_FILE")` and stops before sending SQL unless the URLs name three different users.
+    `.env.example` and `docs/OPERATION.md` updated.
+  - Tests: new `tests/unit/test_db_tls.py` (CA path resolution, TLS args, missing file, grant users from URLs,
+    one-user refusal); `test_dev_tooling.py` compose and README-script tests updated. `make prod-config` passes
+    with the real `.env.prod`. `make test`: 433 backend + 45 Vitest passed.
+
+## Production DB setup no longer depends on particular users
+- **When:** 2026-11-23 23:17 MST
+- **Who:** Claude (Claude Opus 5.5)
+- **Reference:** Thomas in chat: the setup was complicated and easy to get wrong; `deploy/README.md` should only say to
+  create the database `msp`, and nothing should depend on a specific DB user or password. Replaces the bootstrap
+  script and the three-user rule of the two entries above.
+- **What:**
+  - `deploy/README.md`: section 2 is now "Database (first time)": create `msp` (and the user, if needed) in the DO
+    panel, add trusted sources, then `make prod-config` / `make migrate` / `make ingest`. The `doadmin` bootstrap
+    script is gone. The `.env.prod` table says any DO user works, the same one in all three URLs included.
+  - `selector db-grants` (`make migrate`): no three-user rule. A role that uses the migrator's user is skipped (no
+    grants when all three share one user); when the migrator may not GRANT (MySQL 1044/1142/1410, e.g. a DO panel
+    user) it prints a warning and succeeds. `grant_statements` takes `None` to skip a role.
+  - `.env.example`, `docs/OPERATION.md` updated; `docker-compose.prod.yml` unchanged (TLS via `MSP_DB_CA_FILE`).
+  - Tests: `test_db_tls.py` covers one user (no grants), a shared ingest/migrator user, `None` roles and the
+    no-GRANT warning; the README-script test is removed. `make test`: 435 backend + 45 Vitest passed.
+  - Note: while checking, `make migrate` ran once with the dev `.env` against the shared MySQL (192.168.0.216).
+    No new migrations exist in this work; `db-grants` hit 1142 there (msp_dev_migrator may not GRANT) and warned.
+
+## Ingest loads in batches of 10,000 rows per transaction
+- **When:** 2026-11-24 00:11 MST
+- **Who:** Claude (Claude Opus 5.5)
+- **Reference:** Thomas in chat after the first `make ingest ENV_FILE=.env.prod` stalled over the long link to DO
+  (about 1.88 M rows in one transaction): one transaction per table, and batches of 10,000 rows for big tables.
+- **What:**
+  - `selector/ingest/load.py`: `swap_year` (one transaction) is replaced by `load_year`: per table, deletes
+    (`DELETE ... LIMIT`) and inserts run in transactions of at most `BATCH = 10_000` rows (was 5,000 rows per
+    statement in one transaction). The year's `plan` rows are deleted first and inserted last, so the API's
+    readiness check (`plan` rows for the year) stays *not ready* while the other tables load.
+  - `selector/ingest/run.py`: validation runs after the load; on failure `unpublish_year` removes the year's
+    `plan` rows (year not ready) and no `ok` `ingest_run` row is written. Trade-off: a failed or interrupted run
+    no longer keeps the previous data in service; the year is unavailable until an ingest passes.
+  - Tests (`tests/integration/test_ingest.py`): `test_failed_validation_rolls_back` became
+    `test_failed_validation_takes_the_year_out_of_service`; new `test_small_batches_load_the_same_rows`
+    (BATCH=3, same checksums, many commits) and `test_plan_rows_go_out_first_and_in_last`. `make test`: 437
+    backend + 45 Vitest passed.
+  - Docs: `docs/OPERATION.md` (ingest), `deploy/README.md` section 2.
+
+## Ingest reconnects when the database connection stalls
+- **When:** 2026-11-24 00:39 MST
+- **Who:** Claude (Claude Opus 5.5)
+- **Reference:** Thomas in chat: the second `make ingest ENV_FILE=.env.prod` stalled again (formulary at 520,000 rows);
+  "if the send data is stuck for a few retries, drop the connection and reconnect again to continue".
+- **What:**
+  - `selector/db.py`: `make_engine` takes optional PyMySQL `write_timeout` / `read_timeout`; new
+    `ingest_engine_for` uses them (only `selector ingest`; the API engine is unchanged).
+  - `selector/config.py`: `INGEST_DB_WRITE_TIMEOUT_S` (60), `INGEST_DB_READ_TIMEOUT_S` (300),
+    `INGEST_BATCH_ATTEMPTS` (6).
+  - `selector/ingest/load.py`: every delete and insert batch runs through `_in_transaction`. On a lost or stuck
+    connection (MySQL 2006/2013/2055, or 1205 while the server still holds the dropped batch) it drops the pooled
+    connections, waits 5–30 s and retries the batch on a new connection. A duplicate key on a retry means the
+    earlier try had committed (reply lost), so the batch is done. Other errors stop the run as before.
+  - `selector ingest` prints progress every 100,000 rows per table and each reconnect.
+  - Tests: new `tests/unit/test_ingest_retry.py` (retry codes, give-up, no retry for other errors, duplicate key
+    after a retry vs. on the first try, timeouts only on the ingest engine); `tests/integration/test_ingest.py`
+    runs a real load where one insert batch loses its connection before commit, and one after commit, and checks
+    the tables equal a clean load. `make test`: 448 backend + 45 Vitest passed.
+  - Docs: `docs/OPERATION.md`, `deploy/README.md` section 2, `.env.example`.
+
+## Ingest re-runs continue where the last run stopped
+- **When:** 2026-11-24 00:45 MST
+- **Who:** Claude (Claude Opus 5.5)
+- **Reference:** Thomas in chat: save effort by deleting and reloading only the tables that are not completely
+  loaded. Follows the reconnect entry above.
+- **What:**
+  - `selector/ingest/load.py`: per-table markers in `ingest_run` (`source_id` `table:<name>`, status
+    `loading`/`loaded`, `sha256` = fingerprint of the table's rows; `county` under plan_year 0). A table that is
+    `loaded` with the same fingerprint and row count is skipped; one that is `loading` with the same fingerprint
+    continues after the rows already committed; anything else is deleted and reloaded. `plan` still goes out first
+    and in last whenever another table needs work; `unpublish_year` also drops its marker. The marker steps are
+    ordered so a crash at any point leads to either a clean continue or a full reload of that table.
+  - `selector ingest --full` / `make ingest INGEST_FLAGS=--full` forget the markers and reload every table.
+    The app reads only `status='ok'` rows of `ingest_run`, so the markers do not change `data_vintage`.
+  - Fingerprinting costs about 4 s per million rows (about 8 s for the 1.88 M rows of 2027).
+  - Tests (`tests/integration/test_ingest.py`): unchanged re-run writes nothing; a run cut off inside `tier_cost`
+    continues after its 200 committed rows and keeps the finished tables; changed rows reload only that table and
+    `plan`; `--full` reloads everything. The ingest fixture clears markers first, since other tests edit `county`
+    by hand. `make test`: 452 backend + 45 Vitest passed.
+  - Docs: `docs/OPERATION.md`, `deploy/README.md`, `Makefile` (`INGEST_FLAGS`).
+
+## Ingest: 1,000-row batches; stuck connections closed on the server too
+- **When:** 2026-11-24 02:09 MST
+- **Who:** Claude (Claude Opus 5.5)
+- **Reference:** Thomas in chat: `formulary` batches still hit write timeouts and the DO dashboard showed the number
+  of connections rising; plan: 1,000 rows per commit, and close a hung connection before making a new one.
+- **What:**
+  - `selector/ingest/load.py`: `BATCH = 1_000` (was 10,000). On a retry, the new connection first runs
+    `KILL <thread id>` on the failed connection's server session (`_kill_server_session`, best effort), which ends
+    it and frees the row locks of its unfinished batch. Cause of the rising count: our side closed its socket, but
+    the server kept the idle session for `wait_timeout` (8 hours by default).
+  - `selector/db.py`: `make_engine(session_sql=...)` (PyMySQL `init_command`); `ingest_engine_for` sets
+    `wait_timeout` 600 s and `net_read_timeout` 120 s per ingest session, so an orphan the KILL misses ends within
+    minutes. The API engine is unchanged.
+  - Tests: unit test that a retry KILLs the earlier session ids in order; integration test that the plain ingest
+    user can KILL its own session on MySQL 8.4 and that the session limits apply. `make test`: 454 backend + 45
+    Vitest passed.
+  - Docs: `docs/OPERATION.md`, `deploy/README.md`, `.env.example`.
+
+## `make prod-*` ignores stale shell copies of `.env.prod` keys
+- **When:** 2026-11-24 02:32 MST
+- **Who:** Claude (Claude Opus 5.5)
+- **Reference:** Thomas in chat: `make prod-up` failed, `api` unhealthy. Cause: the API container got the old
+  `DATABASE_URL` (user `tadmin`, no rights on `msp`, MySQL 1044 → readiness `schema_missing`) still exported in
+  the shell from the earlier section-2 bootstrap, because Compose prefers shell variables over `--env-file`.
+  `.env.prod` itself already named `mspusr`.
+- **What:**
+  - `Makefile`: `COMPOSE_PROD` runs `env -u <every key in .env.prod> docker compose --env-file .env.prod ...`,
+    so `.env.prod` is the only source for the prod targets.
+  - Tests: `test_prod_targets_ignore_stale_shell_copies_of_env_prod_keys`; checked by hand that a stale exported
+    `DATABASE_URL` now renders the `.env.prod` user. `make test`: 455 backend + 45 Vitest passed.
+
+## `make prod-up` is the whole start; containers' `DATABASE_URL` only from `.env.prod`
+- **When:** 2026-11-24 02:41 MST
+- **Who:** Claude (Claude Opus 5.5)
+- **Reference:** Thomas in chat: `make prod-up` should start everything without a separate `make smoke`, and one
+  make operation with `env_file` from `.env.prod` should keep the DB user correct.
+- **What:**
+  - `Makefile`: `prod-up` depends on `prod-config` (now also checks that `.env.prod` sets `DATABASE_URL`, by
+    grep so the URL never lands on a command line), runs `up -d --wait`, then `scripts/smoke.sh` against
+    `127.0.0.1:<MSP_WEB_PORT from .env.prod>`; a failed smoke test says the containers are up and points to the logs.
+  - `docker-compose.prod.yml`: `DATABASE_URL` is no longer interpolated (`${DATABASE_URL}`); the containers get it
+    from `env_file: .env.prod` only, so an exported shell variable cannot replace it, even with a hand-run
+    `docker compose`.
+  - Tests: `test_prod_api_database_url_comes_only_from_env_prod`,
+    `test_prod_up_checks_the_config_waits_for_health_and_runs_the_smoke_test`; the stale-shell test follows the new
+    target. `make test`: 457 backend + 45 Vitest passed.
+  - Docs: `deploy/README.md` sections 3 and 5.
+
+## `make zip-data`: load the HUD ZIP→county table on the server
+- **When:** 2026-11-24 02:46 MST
+- **Who:** Claude (Claude Opus 5.5)
+- **Reference:** Thomas in chat: `make prod-up` started every container, but the smoke test failed at "ZIP 85004 →
+  Maricopa" (`counties: []`, `source: none`). Cause: `zip_county_cache` is empty on the server, no
+  `HUD_API_TOKEN` is set, and a No-save-only API never writes that cache; the deploy steps had no ZIP step.
+- **What:**
+  - `Makefile`: `make zip-data` runs `selector hud load-file` with `HUD_FILE=<ZIP_COUNTY_*.xlsx>` (path made
+    absolute), else `selector hud preload --state All` (HUD API). Takes `ENV_FILE=.env.prod` like `make ingest`.
+  - `selector/cli.py`: both HUD commands store rows 1,000 per transaction through the ingest engine and its
+    reconnect/KILL retry (`_store_zip_rows`; upserts, so a resend is safe); before, each was one transaction.
+    `hud preload` without a token now says how to get one or use a file, instead of calling HUD with an empty token.
+  - Docs: `deploy/README.md` section 2 (ZIP step, where to download the file, why it is required),
+    `docs/OPERATION.md` command table.
+  - Tests: missing-token message, 1,000-row batches (2,500 rows → 3 transactions), `make zip-data` file vs. API.
+    The existing dev-data tests run `hud load-file` end to end through the new path. `make test`: 461 backend + 45
+    Vitest passed.
+
+## Smoke test: real-data mode for `make prod-up`
+- **When:** 2026-11-24 MST
+- **Who:** Claude (Claude Opus 5.5)
+- **Reference:** Thomas in chat: `make prod-up` failed at "POST /api/compare (needs make ingest-dev)". The API was
+  fine (101 Maricopa plans, 61 ranked, H0028_028_0 complete with `src_ref`), but `scripts/smoke.sh` asserted the
+  golden values from the dev sample fixtures (`rank==1`, `total_low_cents==322855`). With the real CMS 2027 data
+  on the server, H0028_028_0 ranks 14 with `total_low_cents==330655`, so the check could never pass in production.
+- **What:**
+  - `scripts/smoke.sh`: `SMOKE_DATA=sample|real` (default `sample`, anything else exits 2). Both modes require
+    ranked plans, a `top` list, H0028_028_0 in the canvas and `src_ref` on every row; only `sample` also checks
+    the golden H0028_028_0 rank, premium, MOOP, Part D deductible, stars and total.
+  - `Makefile`: `make prod-up` runs the smoke test with `SMOKE_DATA=real`; `make smoke` passes `SMOKE_DATA` through
+    (default `sample`).
+  - Docs: `docs/OPERATION.md` command table, `deploy/README.md` section 3.
+  - Tests: `prod-up` uses real mode, `make smoke` defaults to sample, an unknown mode is rejected.
+    Checked by hand against the running prod stack: `SMOKE_DATA=real` passes; `sample` still fails on the golden row.
+    `make test`: 463 backend + 45 Vitest passed.
+
+## Prod web UI reachable from the LAN (`MSP_WEB_BIND` in `.env.prod`)
+- **When:** 2026-11-24 MST
+- **Who:** Claude (Claude Opus 5.5)
+- **Reference:** Thomas in chat: could not open http://192.168.0.212:8080 from a laptop after `make prod-up`.
+  `docker-compose.prod.yml` bound the web port to `127.0.0.1` and ignored `MSP_WEB_BIND=0.0.0.0` in `.env.prod`.
+- **What:**
+  - `docker-compose.prod.yml`: web port is `${MSP_WEB_BIND:-127.0.0.1}:${MSP_WEB_PORT:-8080}:8080` (loopback
+    stays the default for the host nginx setup).
+  - `Makefile`: `make prod-up` runs the smoke test against `MSP_WEB_BIND` when it names one IP, else 127.0.0.1.
+  - Docs: `deploy/README.md` section 3, `.env.example` comment.
+  - Tests: `test_prod_up_smoke_calls_the_bound_address` (blank, 0.0.0.0, LAN IP); the existing loopback-default
+    port test covers the compose change. Checked on the host: `make prod-up` passed, web on `0.0.0.0:8080`,
+    http://192.168.0.212:8080 → 200.
+
+## Important info dialog, CSV download, assistant answers column questions
+- **When:** 2026-11-24 MST
+- **Who:** Claude (Claude Opus 5.5)
+- **Reference:** Thomas in chat: (1) an "Important info" button with the Est. yearly cost / Worst case / deductible
+  explanation; (2) "Download comparison" as `.csv` to sort and filter in a spreadsheet; (3) "Ask the assistant"
+  couldn't answer "What is the column Est. yearly cost?". Cause of (3): `.env.prod` runs `LLM_PROVIDER=fake`
+  (the "Demo" provider), which only re-runs the comparison or explains a plan ID; a real model had no definitions.
+- **What:**
+  - `backend/selector/glossary.py`: one glossary of the table's columns and terms (Est. yearly cost, Worst case,
+    MOOP, Deductible, Premium/mo, Stars, Drugs covered, Dental, Your doctors, vs. standard, Rank), written to match
+    `selector.cost.engine`. No amounts, percentages or plan IDs, so every entry passes the chat validator.
+  - Assistant: system prompt **v3** (`PROMPT_VERSION` v3, recorded on feedback rows) = v2 + the glossary and a rule
+    to answer column/term questions from it without a tool. The Demo provider answers such questions from the
+    glossary (up to three terms). The tool set is unchanged (DESIGN §6.2).
+  - `GET /api/config` returns `glossary`. New header button **Important info** opens a dialog with the glossary
+    and a worked example from the user's top-ranked plan (typical year vs. bad year, line by line); Escape,
+    backdrop click or Close shut it.
+  - **Download comparison (.csv)**: every plan (standard row, ranked by rank, then not ranked with the reason) with
+    plain dollar numbers for sorting, UTF-8 BOM for Excel, formula-injection guard on text cells; disclaimer and
+    notes below a blank row. The Markdown export stays as **Download report** (DESIGN §8.5 "Markdown or PDF").
+  - Tests: glossary matching and validator pass, prompt v3 carries the glossary, Demo provider glossary turn,
+    config field, CSV layout/numbers/escaping, dialog example adds up and closes. `make test`: 477 backend +
+    50 Vitest passed. Not deployed: needs `make prod-build && make prod-up`.
+
+## `make prod-build` takes extra `docker compose build` arguments
+- **When:** 2026-11-24 MST
+- **Who:** Claude (Claude Opus 5.5)
+- **Reference:** Thomas in chat: let `prod-build` take extra arguments, free format (`build $*`). `$*` is the stem of
+  a pattern rule and is empty in a plain rule, and make would treat `api` as a second target, so the words are
+  read from `MAKECMDGOALS` instead.
+- **What:** `Makefile`: words after `prod-build` are passed to `docker compose build` and turned into no-op targets:
+  `make prod-build api`, `make prod-build web api`; flags go after `--` so make doesn't parse them:
+  `make prod-build -- --no-cache api`. Docs: `deploy/README.md` section 3, `docs/OPERATION.md`. Test:
+  `test_prod_build_passes_extra_words_to_compose_build` (none, one, two services, flags after `--`).

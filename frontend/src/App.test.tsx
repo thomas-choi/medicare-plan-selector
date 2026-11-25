@@ -125,3 +125,35 @@ describe("consent → intake → compare (No-save)", () => {
     await waitFor(() => expect(screen.getByLabelText("Message")).toBeDisabled());
   });
 });
+
+describe("Important info and downloads", () => {
+  it("opens the glossary with an example from the top-ranked plan, closes on Escape, and enables both downloads", async () => {
+    mockFetch({
+      "GET /api/config": CONFIG,
+      "GET /api/session": {
+        session: { mode: "nosave", expires_at: "x", plan_year: 2027 },
+        chat: [],
+        // worst case = premium + Part B + drug high + MOOP, as the cost engine computes it
+        canvas: {
+          tab: "table",
+          rows: [{ ...ROWS[0], worst_case_cents: 243480 + 47375 + 655000 }, ...ROWS.slice(1)],
+        },
+      },
+    });
+    render(<App />);
+    expect(await screen.findByRole("button", { name: "Download comparison (.csv)" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Download report" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Important info" }));
+    const dialog = screen.getByRole("dialog", { name: "Important information" });
+    expect(within(dialog).getByText("Worst case")).toBeInTheDocument();
+    expect(within(dialog).getByText("What a very bad year could cost.")).toBeInTheDocument();
+    const example = within(dialog).getByRole("region", { name: "Example from your comparison" });
+    expect(example).toHaveTextContent("Example: Test Plan A (HMO)");
+    const total = within(example).getByText("Total").closest("tr");
+    expect(total).toHaveTextContent("$3,228.55");
+    expect(total).toHaveTextContent("$9,458.55");
+    expect(within(example).getByText("$6,550.00 (the MOOP)")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Important information" })).not.toBeInTheDocument();
+  });
+});

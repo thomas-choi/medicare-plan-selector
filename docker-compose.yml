@@ -2,7 +2,7 @@
 # passwords here are dev-only placeholders (public in this repo), so publish MySQL/Redis only on a trusted LAN.
 # Redis is app-local (DESIGN-v0.4-ADDENDUM A10): it always runs here, also when MySQL is a shared server. MSP_DB_BIND
 # publishing Redis is only for sharing this machine's whole dev stack; a host using a shared MySQL leaves it blank.
-# Production uses docker-compose.prod.yml with secrets from the server .env.
+# Production uses docker-compose.prod.yml with secrets from .env.prod (make prod-*; see deploy/README.md).
 name: msp
 
 services:

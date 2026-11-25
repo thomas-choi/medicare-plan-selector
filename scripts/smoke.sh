@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 # Smoke test against a running app (make app-up → http://127.0.0.1:8080, or make api-dev → http://127.0.0.1:8000).
-# Needs `make ingest-dev` data. Uses a throwaway No-save session and erases it at the end. Prints no secrets.
+# Uses a throwaway No-save session and erases it at the end. Prints no secrets.
+# SMOKE_DATA=sample (default) expects `make ingest-dev` data and checks the golden H0028_028_0 row exactly.
+# SMOKE_DATA=real (make prod-up, or after a real `make ingest`) checks only that Maricopa is ranked, H0028_028_0
+# is offered and every row carries src_ref: its rank and totals depend on the full CMS plan set.
 set -euo pipefail
 BASE="${1:-http://127.0.0.1:8080}"
+SMOKE_DATA="${SMOKE_DATA:-sample}"
+case "$SMOKE_DATA" in sample|real) ;; *) echo "SMOKE_DATA must be sample or real, not '$SMOKE_DATA'" >&2; exit 2;; esac
 JAR="$(mktemp)"
 trap 'rm -f "$JAR"' EXIT
 c() { curl -fsS -b "$JAR" -c "$JAR" "$@"; }
-j() { python3 -c "import json,sys; d=json.load(sys.stdin); $1"; }
+j() { python3 -c "import json,sys; d=json.load(sys.stdin); $1" "${@:2}"; }
 pass() { printf '  ok  %s\n' "$1"; }
 fail() { printf 'FAIL  %s\n' "$1" >&2; exit 1; }
 
@@ -31,10 +36,13 @@ rows={r["plan_key"]:r for r in d["canvas"]["rows"]}
 g=rows["H0028_028_0"]
 print("      plans=%d ranked=%d top=%s" % (len(rows), sum(1 for r in rows.values() if r["rank"]), [t["plan_key"] for t in d["top"]]))
 print("      H0028_028_0: rank=%s premium=$%.2f/mo moop=$%.2f partD_ded=$%.2f stars=%s total=$%.2f-$%.2f" % (g["rank"], g["monthly_premium_cents"]/100, g["moop_cents"]/100, g["part_d_deductible_cents"]/100, g["star_overall"], g["total_low_cents"]/100, g["total_high_cents"]/100))
-assert g["rank"]==1 and g["monthly_premium_cents"]==0 and g["moop_cents"]==655000 and g["part_d_deductible_cents"]==32500 and g["star_overall"]==4.5, g
-assert g["total_low_cents"]==322855, g["total_low_cents"]
-assert all(r.get("src_ref") for r in rows.values())' && pass "POST /api/compare: Maricopa ranked, golden H0028_028_0 row matches" \
-  || fail "POST /api/compare (needs make ingest-dev)" || fail "POST /api/compare: Maricopa ranked, golden H0028_028_0 row matches"
+assert d["top"] and any(r["rank"] for r in rows.values()), "no ranked plans"
+assert all(r.get("src_ref") for r in rows.values()), "a row has no src_ref"
+if sys.argv[1] == "sample":
+    assert g["rank"]==1 and g["monthly_premium_cents"]==0 and g["moop_cents"]==655000 and g["part_d_deductible_cents"]==32500 and g["star_overall"]==4.5, g
+    assert g["total_low_cents"]==322855, g["total_low_cents"]' "$SMOKE_DATA" \
+  && pass "POST /api/compare: Maricopa ranked ($SMOKE_DATA data$([ "$SMOKE_DATA" = sample ] && echo ', golden H0028_028_0 row matches'))" \
+  || fail "POST /api/compare ($SMOKE_DATA data$([ "$SMOKE_DATA" = sample ] && echo '; needs make ingest-dev, or SMOKE_DATA=real for a real ingest'))"
 if c "$BASE/api/config" | j 'sys.exit(0 if d["llm_enabled"] else 1)'; then
   c -H 'Content-Type: application/json' -X POST "$BASE/api/chat" -d '{"message":"Explain H0028_028_0"}' >"$JAR.sse"
   grep -q '^event: done' "$JAR.sse" && pass "POST /api/chat (SSE) completed" || fail "POST /api/chat (SSE)"

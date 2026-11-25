@@ -14,9 +14,11 @@ import { Canvas } from "./Canvas";
 import { Chat } from "./Chat";
 import { Consent } from "./Consent";
 import { Disclaimer } from "./Disclaimer";
+import { comparisonCsv } from "./exportCsv";
 import { comparisonMarkdown, download } from "./exportMd";
 import { FeedbackDialog, ModeContext, OutcomeCard } from "./Feedback";
 import { Header } from "./Header";
+import { ImportantInfoDialog } from "./ImportantInfo";
 import { Intake } from "./Intake";
 
 type Tab = "table" | "chart" | "side_by_side" | "checklist";
@@ -35,6 +37,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
 
   const load = useCallback(async () => {
@@ -123,11 +126,19 @@ export function App() {
   }
 
   const canDownload = !!canvas.rows?.length;
-  const doDownload = () => {
+  const doDownloadReport = () => {
     if (!config) return;
     download(
       `medicare-comparison-${config.plan_year}.md`,
       comparisonMarkdown(canvas, profile, config.checklist, config.plan_year),
+    );
+  };
+  const doDownloadCsv = () => {
+    if (!config) return;
+    download(
+      `medicare-comparison-${config.plan_year}.csv`,
+      comparisonCsv(canvas, profile, config.plan_year),
+      "text/csv;charset=utf-8",
     );
   };
 
@@ -141,7 +152,9 @@ export function App() {
           mode={mode}
           onErase={erase}
           onFeedback={() => setFeedbackOpen(true)}
-          onDownload={doDownload}
+          onInfo={() => setInfoOpen(true)}
+          onDownloadCsv={doDownloadCsv}
+          onDownloadReport={doDownloadReport}
           canDownload={canDownload}
         />
         {notice && (
@@ -211,6 +224,13 @@ export function App() {
           )}
         </main>
         {feedbackOpen && <FeedbackDialog onClose={() => setFeedbackOpen(false)} lastToolCalls={[]} />}
+        {infoOpen && config && (
+          <ImportantInfoDialog
+            glossary={config.glossary ?? []}
+            example={ranked[0]}
+            onClose={() => setInfoOpen(false)}
+          />
+        )}
         <Disclaimer />
       </div>
     </ModeContext.Provider>

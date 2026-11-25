@@ -78,6 +78,14 @@ class Settings(BaseSettings):
     ingest_database_url: str = ""
     migrator_database_url: str = ""
     redis_url: str = "redis://:dev-redis-pw@127.0.0.1:6380/0"
+    # CA certificate for MySQL over TLS (DO Managed MySQL in production, deploy/README.md). A relative path is relative
+    # to the repo root, e.g. ./cert/do.ca.crt. Blank = no TLS (dev stack). A URL with its own ?ssl_ca= keeps it.
+    msp_db_ca_file: str = ""
+    # `selector ingest` over a slow or long-distance link: a send or reply stuck this long drops the connection, and
+    # the batch is retried on a new one up to INGEST_BATCH_ATTEMPTS times (selector/ingest/load.py).
+    ingest_db_write_timeout_s: int = 60
+    ingest_db_read_timeout_s: int = 300
+    ingest_batch_attempts: int = 6
 
     # Sessions and privacy (DESIGN §8.1, §8.5).
     default_session_mode: DefaultSessionMode = "nosave"
@@ -153,6 +161,13 @@ class Settings(BaseSettings):
     @property
     def effective_migrator_url(self) -> str:
         return self.migrator_database_url or self.effective_ingest_url
+
+    @property
+    def db_ca_path(self) -> Path | None:
+        if not self.msp_db_ca_file.strip():
+            return None
+        p = Path(self.msp_db_ca_file.strip()).expanduser()
+        return p if p.is_absolute() else (REPO_ROOT / p).resolve()
 
 
 @lru_cache

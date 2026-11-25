@@ -2,12 +2,20 @@
 SHELL := /bin/bash
 UV := uv run --project backend
 COMPOSE := docker compose
-COMPOSE_PROD := docker compose -f docker-compose.prod.yml
+# Production reads only .env.prod: `--env-file` for the ${...} values in the compose file, `env_file:` for the
+# containers. Without --env-file Compose would fill them from the dev .env.
+PROD_ENV ?= .env.prod
+# Compose prefers variables exported in the shell over --env-file, so a stale `export DATABASE_URL=...` (e.g. from
+# `set -a; . ./.env.prod`) would win. Drop every key that .env.prod defines from the environment first.
+PROD_KEYS = $(shell sed -n 's/^[[:space:]]*\(export[[:space:]]\+\)\?\([A-Za-z_][A-Za-z0-9_]*\)=.*/-u \2/p' $(PROD_ENV) 2>/dev/null)
+COMPOSE_PROD = env $(PROD_KEYS) docker compose --env-file $(PROD_ENV) -f docker-compose.prod.yml
 
-# Host-side commands read the repo-root .env if it exists (export-style, like `set -a; . ./.env`), then fall back
-# to the local dev stack: MySQL on 127.0.0.1:3307 and Redis on 127.0.0.1:6380 with the dev-only passwords from
-# deploy/mysql/01-roles.sql and docker-compose.yml. Containers use the service names (mysql:3306, redis:6379).
-LOAD_ENV := set -a; [ ! -f $(CURDIR)/.env ] || . $(CURDIR)/.env; set +a;
+# Host-side commands read the repo-root $(ENV_FILE) (default .env; `make migrate ENV_FILE=.env.prod` on the server)
+# if it exists (export-style, like `set -a; . ./.env`), then fall back to the local dev stack: MySQL on
+# 127.0.0.1:3307 and Redis on 127.0.0.1:6380 with the dev-only passwords from deploy/mysql/01-roles.sql and
+# docker-compose.yml. Containers use the service names (mysql:3306, redis:6379).
+ENV_FILE ?= .env
+LOAD_ENV := set -a; [ ! -f $(CURDIR)/$(ENV_FILE) ] || . $(CURDIR)/$(ENV_FILE); set +a;
 DEV_DB := \
   MIGRATOR_DATABASE_URL="$${MIGRATOR_DATABASE_URL:-mysql+pymysql://msp_migrator:dev-migrator-pw@127.0.0.1:3307/msp}" \
   INGEST_DATABASE_URL="$${INGEST_DATABASE_URL:-mysql+pymysql://msp_ingest:dev-ingest-pw@127.0.0.1:3307/msp}" \
@@ -84,8 +92,18 @@ ingest-dev: migrate  ## dev data: committed CMS sample fixtures (Maricopa, AZ) +
 	$(SELECTOR) hud load-file tests/fixtures/hud/zip_county_dev.csv --year 2026 --quarter 2
 	$(SELECTOR) directories sync --year 2027 --seed-only
 
-ingest: migrate  ## real CMS 2027 ingest (downloads ~hundreds of MB the first time)
-	$(SELECTOR) ingest --year 2027
+# INGEST_FLAGS=--full reloads every table; by default a re-run skips tables already loaded with the same rows.
+INGEST_FLAGS ?=
+# ZIP→county table (zip_county_cache) for the ZIP lookup. The API fills it on a miss only in Saved mode, so a
+# No-save-only server needs it loaded: HUD_FILE=<HUD ZIP_COUNTY .xlsx/.csv> (huduser.gov, no token), or with
+# HUD_API_TOKEN set, all states from the HUD API. Re-running refreshes the rows (upsert).
+HUD_FILE ?=
+zip-data:  ## load the HUD ZIP→county table (HUD_FILE=ZIP_COUNTY_<MMYYYY>.xlsx, or HUD_API_TOKEN for the API)
+	@cd backend && $(LOAD_ENV) env $(DEV_DB) sh -c 'if [ -n "$(HUD_FILE)" ]; then \
+	  exec uv run selector hud load-file "$(abspath $(HUD_FILE))"; else exec uv run selector hud preload --state All; fi'
+
+ingest: migrate  ## real CMS 2027 ingest (downloads ~hundreds of MB the first time; re-runs continue where they stopped)
+	$(SELECTOR) ingest --year 2027 $(INGEST_FLAGS)
 	$(SELECTOR) directories sync --year 2027 --seed-only
 
 directories-sync:  ## map carriers' public provider directories (UHC, Humana) to 2027 plans (network, ~1 req/s/host)
@@ -142,19 +160,36 @@ precommit:  ## run before every proposed commit (gitleaks, forbidden files, lint
 build-frontend:
 	cd frontend && npm run build
 
-smoke:  ## quick check of a running app (make app-up or api-dev): config, a No-save session and a Maricopa compare
+smoke:  ## quick check of a running app (make app-up or api-dev): config, a No-save session and a Maricopa compare (SMOKE_DATA=real after a real ingest)
 	@$(LOAD_ENV) host="$${MSP_WEB_BIND:-127.0.0.1}"; [ "$$host" != 0.0.0.0 ] || host=127.0.0.1; \
-	  bash scripts/smoke.sh "$${SMOKE_URL:-http://$$host:$${MSP_WEB_PORT:-8080}}"
+	  SMOKE_DATA="$${SMOKE_DATA:-sample}" bash scripts/smoke.sh "$${SMOKE_URL:-http://$$host:$${MSP_WEB_PORT:-8080}}"
 
-# ---- production (docker-compose.prod.yml; needs the server .env, see deploy/README.md) ----
-prod-config:  ## validate the production compose file against .env (prints no secrets)
-	$(COMPOSE_PROD) config --quiet && echo "docker-compose.prod.yml OK"
+# ---- production (docker-compose.prod.yml; needs .env.prod, see deploy/README.md) ----
+# Value of KEY in .env.prod (last assignment; quotes, `export` and trailing comments dropped).
+prod_value = $(shell sed -n 's/^[[:space:]]*\(export[[:space:]]\+\)\?$(1)=//p' $(PROD_ENV) 2>/dev/null | tail -n 1 | sed 's/[[:space:]]\+\#.*//; s/^["'"'"']//; s/["'"'"']$$//')
 
-prod-build:
-	$(COMPOSE_PROD) build
+prod-config:  ## validate the production compose file against .env.prod (prints no secrets)
+	@[ -f $(PROD_ENV) ] || { echo "$(PROD_ENV) not found: cp .env.example $(PROD_ENV), see deploy/README.md" >&2; exit 1; }
+	@grep -Eq '^[[:space:]]*(export[[:space:]]+)?DATABASE_URL=[^[:space:]#]' $(PROD_ENV) || { \
+	  echo "set DATABASE_URL in $(PROD_ENV) (the API user on the DO host, port 25060)" >&2; exit 1; }
+	$(COMPOSE_PROD) config --quiet && echo "docker-compose.prod.yml OK ($(PROD_ENV))"
 
-prod-up:
+# Free-form `docker compose build` arguments after the target: `make prod-build api`, and flags after `--` so make
+# doesn't read them itself: `make prod-build -- --no-cache api`. The extra words become no-op targets.
+ifeq (prod-build,$(firstword $(MAKECMDGOALS)))
+  PROD_BUILD_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+  $(eval $(PROD_BUILD_ARGS):;@:)
+endif
+prod-build:  ## build the production images; extra words go to docker compose build (make prod-build -- --no-cache api)
+	$(COMPOSE_PROD) build $(PROD_BUILD_ARGS)
+
+# The smoke test calls the web container where it listens: loopback unless MSP_WEB_BIND names one IP.
+PROD_SMOKE_HOST = $(if $(filter-out 0.0.0.0,$(call prod_value,MSP_WEB_BIND)),$(call prod_value,MSP_WEB_BIND),127.0.0.1)
+
+prod-up: prod-config  ## start the production stack, wait until every container is healthy, then run the smoke test
 	$(COMPOSE_PROD) up -d --wait
+	@SMOKE_DATA=real bash scripts/smoke.sh "http://$(PROD_SMOKE_HOST):$(or $(call prod_value,MSP_WEB_PORT),8080)" || { \
+	  echo "The containers are running, but the smoke test failed (see above). Logs: make prod-logs" >&2; exit 1; }
 
 prod-down:
 	$(COMPOSE_PROD) down

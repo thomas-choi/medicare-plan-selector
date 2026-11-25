@@ -1,4 +1,4 @@
-"""`selector ingest --year YYYY`: fetch → lock check → parse/normalize → swap → validate (one transaction)."""
+"""`selector ingest --year YYYY`: fetch → lock check → parse/normalize → load (batched transactions) → validate."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import yaml
 from sqlalchemy import Engine
 
 from selector.ingest.fetch import Fetched, fetch_source
-from selector.ingest.load import build_year, record_runs, swap_year
+from selector.ingest.load import build_year, load_year, record_runs, unpublish_year
 from selector.ingest.manifest import check_lock
 from selector.ingest.parsers import county_xwalk, decode
 from selector.ingest.validate import ValidationFailed, validate_year
@@ -67,6 +67,7 @@ def run_ingest(
     raw_dir: Path | None = None,
     lock_path: Path = REPO_ROOT / "sources.lock",
     accept_new: bool = False,
+    full: bool = False,
     offline: bool = False,
     fetched: dict[str, Fetched] | None = None,
 ) -> IngestResult:
@@ -83,11 +84,13 @@ def run_ingest(
             raise ValidationFailed(problems)
 
     data = build_year(year, fetched, spec, overrides_csv)
-    with engine.begin() as conn:
-        counts = swap_year(conn, data)
+    counts = load_year(engine, data, full=full)
+    with engine.connect() as conn:
         problems = validate_year(conn, year, spec, data.oop_thresholds)
-        if problems:
-            raise ValidationFailed(problems)  # rolls back the whole swap
+    if problems:
+        unpublish_year(engine, year)  # the year stays not ready until an ingest passes
+        raise ValidationFailed(problems)
+    with engine.begin() as conn:
         record_runs(conn, year, fetched, counts, "ok")
     log.info("ingest %s ok: %s", year, counts)
     return IngestResult(year, counts, lock_changed)

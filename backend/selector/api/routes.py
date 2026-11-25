@@ -15,6 +15,7 @@ from fastapi import Path as Path_
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from selector import glossary
 from selector.agent import tools as T
 from selector.agent.orchestrator import BudgetExceeded, Orchestrator, TurnResult
 from selector.agent.policy import ESTIMATE_DISCLAIMER
@@ -93,6 +94,7 @@ def config(state: AppState = Depends(st)) -> dict[str, Any]:
         "disclaimer": DISCLAIMER,
         "estimate_disclaimer": ESTIMATE_DISCLAIMER,
         "checklist": T.CHECKLIST,
+        "glossary": glossary.as_list(),
         "allowed_link_hosts": ["medicare.gov", "cms.gov", "shiphelp.org"],
         "app_version": s.app_version,
     }

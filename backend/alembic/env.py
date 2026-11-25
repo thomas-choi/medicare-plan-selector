@@ -8,6 +8,7 @@ from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 from selector.config import get_settings
+from selector.db import db_connect_args
 from selector.models import metadata
 
 config = context.config
@@ -33,7 +34,10 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}), prefix="sqlalchemy.", poolclass=pool.NullPool
+        config.get_section(config.config_ini_section, {}),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+        connect_args=db_connect_args(config.get_main_option("sqlalchemy.url") or ""),
     )
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)

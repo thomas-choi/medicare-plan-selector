@@ -14,6 +14,10 @@ export const CONFIG: AppConfig = {
   limits: { message_chars: 2000, drugs: 30, providers: 15 },
   estimate_disclaimer: "These are estimates.",
   checklist: ["Confirm in Medicare Plan Finder.", "Call each plan about your doctors."],
+  glossary: [
+    { id: "est_yearly_cost", title: "Est. yearly cost", text: "What a typical year could cost you." },
+    { id: "worst_case", title: "Worst case", text: "What a very bad year could cost." },
+  ],
   app_version: "test",
 };
 

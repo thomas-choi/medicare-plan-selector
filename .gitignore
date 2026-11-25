@@ -228,6 +228,8 @@ __marimo__/
 # Env files: only the placeholder template is committed.
 .env.*
 !.env.example
+# Server-local DO CA certificate (deploy/README.md); public, but it belongs to the server, not the repo.
+/cert/
 # Frontend
 node_modules/
 frontend/dist/

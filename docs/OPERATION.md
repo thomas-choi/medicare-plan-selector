@@ -30,12 +30,13 @@ If `npm ci` was skipped, `make` stops with "frontend dependencies are not instal
 | `make ingest-dev` | migrate + committed CMS fixtures + dev ZIP→county rows (no network) |
 | `make dev-data` | `ingest-dev`, but only if the plan database is empty (run by `app-up`) |
 | `make ingest` | migrate + real CMS 2027 ingest (network) |
+| `make zip-data` | HUD ZIP→county table: `HUD_FILE=ZIP_COUNTY_<MMYYYY>.xlsx`, or all states from the HUD API with `HUD_API_TOKEN` (needed on a No-save-only server) |
 | `make app-up` / `app-down` / `app-logs` | build + (re)start only the API and web containers (`${DOCKER_USER}/medicare-plan-selector[-web]:${IMAGE_TAG}`); starts MySQL/Redis if needed, never recreates them / stop all / follow logs |
 | `make api-dev` / `make web-dev` | host-side API (:8000) / Vite dev server (:5173) |
-| `make smoke` | end-to-end check of a running app (`SMOKE_URL`, default `http://${MSP_WEB_BIND:-127.0.0.1}:${MSP_WEB_PORT:-8080}`) |
+| `make smoke` | end-to-end check of a running app (`SMOKE_URL`, default `http://${MSP_WEB_BIND:-127.0.0.1}:${MSP_WEB_PORT:-8080}`). `SMOKE_DATA=sample` (default) expects `make ingest-dev` data and checks the golden H0028_028_0 row exactly; `SMOKE_DATA=real` (after `make ingest`; `make prod-up` uses it) checks only that Maricopa is ranked and every row has `src_ref` |
 | `make test` / `test-fast` / `lint` | full gate / unit tests without Docker / linters |
 | `make purge` | retention purge (Saved sessions idle > `RETENTION_DAYS`, feedback > `FEEDBACK_RETENTION_DAYS`) |
-| `make prod-config` / `prod-build` / `prod-up` / `prod-down` / `prod-logs` | production compose; see [deploy/README.md](../deploy/README.md) |
+| `make prod-config` / `prod-build` / `prod-up` / `prod-down` / `prod-logs` | production compose, settings from `.env.prod` only (`PROD_ENV=` to use another file; words after `prod-build` go to `docker compose build`, e.g. `make prod-build api`, flags after `--`: `make prod-build -- --no-cache api`); see [deploy/README.md](../deploy/README.md) |
 
 
 ## Configuration (`.env`)
@@ -43,12 +44,15 @@ If `npm ci` was skipped, `make` stops with "frontend dependencies are not instal
 blank numeric values (e.g. `LLM_PRICE_IN_PER_MTOK_USD=`) mean "use the default". Put comments on their own lines:
 Compose does not strip `KEY=   # note` (the API treats a value starting with `#` as blank, but other tools may not). Host-side commands use `127.0.0.1:3307`/`:6380`;
 containers use the service names (`mysql:3306`, `redis:6379`), which the dev compose sets for you (override with
-`COMPOSE_DATABASE_URL` / `COMPOSE_REDIS_URL`; production requires them). Every key is documented in
+`COMPOSE_DATABASE_URL` / `COMPOSE_REDIS_URL`). Production uses its own file, `.env.prod`, against DigitalOcean
+Managed MySQL over TLS (`MSP_DB_CA_FILE`, no COMPOSE_* keys; see [deploy/README.md](../deploy/README.md)); host-side targets read it with
+`make <target> ENV_FILE=.env.prod`. Every key is documented in
 [.env.example](../.env.example). The most important:
 
 | Variable | Purpose |
 |---|---|
-| `DATABASE_URL`, `INGEST_DATABASE_URL`, `MIGRATOR_DATABASE_URL`, `REDIS_URL` | three MySQL roles (API read-only on plan data) and Redis |
+| `DATABASE_URL`, `INGEST_DATABASE_URL`, `MIGRATOR_DATABASE_URL`, `REDIS_URL` | three MySQL roles (API read-only on plan data) and Redis. Any user works; with separate users `make migrate` (`selector db-grants`) grants the ingest and API users named in the URLs their rights |
+| `MSP_DB_CA_FILE` | CA certificate for MySQL over TLS (production: `./cert/do.ca.crt`, relative to the repo root). Blank = no TLS (dev stack) |
 | `DEFAULT_SESSION_MODE` | `nosave` only (DESIGN v0.5 B2). Any other value stops the API; both compose files pin it. Saved mode is offered when `PROFILE_ENC_KEY` is set and the user picks it |
 | `PROFILE_ENC_KEY` | enables Saved mode (AES-GCM at rest); blank = No-save only |
 | `LLM_PROVIDER`, `LLM_MODEL` | `anthropic` (design default), `xai`, `openai_compat`, `fake` (keyless demo) or blank (no-LLM) |
@@ -109,8 +113,23 @@ make ingest                                     # = migrate + selector ingest --
 ```
 - Sources are listed in `sources/2027.yaml`; raw files go to the git-ignored `data/raw/2027/`. The large Part D
   file is range-read, so only the needed members are downloaded.
-- One transaction per plan year; it rolls back if validation fails, including the golden-row check for plan
-  `H0028_028_0` in Maricopa County, AZ.
+- Loading is one table at a time, at most 1,000 rows per transaction (`BATCH` in `selector/ingest/load.py`), so a
+  slow or long-distance link never carries one huge transaction. The year's `plan` rows go out first and in last:
+  until the load finishes the API reports *not ready* for that year instead of serving half-loaded data.
+- A stuck or dropped connection (no progress sending for `INGEST_DB_WRITE_TIMEOUT_S`, default 60 s, or no reply for
+  `INGEST_DB_READ_TIMEOUT_S`, default 300 s) is closed and that batch is retried on a new connection after 5–30 s,
+  up to `INGEST_BATCH_ATTEMPTS` (default 6) tries. The ingest prints progress every 100,000 rows and each reconnect.
+- Before retrying, the new connection runs `KILL <id>` on the dropped connection's server session (a user may end
+  its own sessions), which also frees the row locks of its unfinished batch. Ingest sessions also run with
+  `wait_timeout` = 2 × the larger timeout (600 s) and `net_read_timeout` = 2 × the write timeout (120 s), so a
+  session the KILL misses ends within minutes instead of MySQL's default 8 hours.
+- A re-run does only the work that is left: tables already loaded with the same rows are skipped, and a table
+  that was cut off continues after the rows already committed. Each table's progress is a marker row in
+  `ingest_run` (`source_id` `table:<name>`, status `loading`/`loaded`, `sha256` = fingerprint of its rows), so new
+  CMS files or parser changes reload the affected tables. `make ingest INGEST_FLAGS=--full` (`selector ingest
+  --full`) reloads every table, e.g. after plan tables were edited by hand.
+- Validation (including the golden-row check for plan `H0028_028_0` in Maricopa County, AZ) runs after the load. If
+  it fails, or the run is interrupted, the year stays not ready until an ingest passes: fix the cause and re-run.
 - If CMS republishes a file and its sha256 no longer matches `sources.lock`, the ingest stops. Review the change,
   then re-run with `--accept-new` and commit the updated `sources.lock`.
 - ZIP→county: `HUD_API_TOKEN` + `selector hud preload --state AZ`, or without a token

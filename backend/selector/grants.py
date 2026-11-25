@@ -9,10 +9,14 @@ from selector.models import NOSAVE_ALLOWED_TABLES, PLAN_TABLES, USER_TABLES
 RW = "SELECT, INSERT, UPDATE, DELETE"
 
 
-def grant_statements(schema: str, ingest_user: str, api_user: str) -> list[str]:
+def grant_statements(schema: str, ingest_user: str | None, api_user: str | None) -> list[str]:
+    """Grants for the ingest and API users; `None` skips a role (it uses the migrator user, which has every right)."""
     stmts: list[str] = []
+    if ingest_user:
+        stmts += [f"GRANT {RW} ON `{schema}`.`{t}` TO '{ingest_user}'@'%'" for t in PLAN_TABLES]
+    if not api_user:
+        return stmts
     for t in PLAN_TABLES:
-        stmts.append(f"GRANT {RW} ON `{schema}`.`{t}` TO '{ingest_user}'@'%'")
         stmts.append(f"GRANT SELECT ON `{schema}`.`{t}` TO '{api_user}'@'%'")
     # Runtime ZIP→county cache fill on a miss (saved mode only; No-save never writes it).
     stmts.append(f"GRANT INSERT, UPDATE ON `{schema}`.`zip_county_cache` TO '{api_user}'@'%'")
@@ -23,7 +27,7 @@ def grant_statements(schema: str, ingest_user: str, api_user: str) -> list[str]:
     return stmts
 
 
-def apply_grants(conn: Connection, schema: str, ingest_user: str, api_user: str) -> int:
+def apply_grants(conn: Connection, schema: str, ingest_user: str | None, api_user: str | None) -> int:
     stmts = grant_statements(schema, ingest_user, api_user)
     for s in stmts:
         conn.execute(text(s))

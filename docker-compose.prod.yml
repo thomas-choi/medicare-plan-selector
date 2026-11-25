@@ -1,9 +1,16 @@
 # Production stack for med.thomas-choi.com (DESIGN §10). Standalone file (not an override of the dev compose):
-#   docker compose -f docker-compose.prod.yml up -d
-# Secrets come from the server .env (mode 600, never committed): MYSQL_ROOT_PASSWORD, REDIS_PASSWORD,
-# COMPOSE_DATABASE_URL, COMPOSE_REDIS_URL, PROFILE_ENC_KEY, ADMIN_GATE_SECRET, LLM keys. See deploy/README.md.
-# Only the web container and MySQL are published, both on 127.0.0.1: the host nginx terminates TLS and proxies to
-# the web container; MySQL's localhost port is for host-side `make migrate` / `make ingest`.
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d      (or: make prod-up)
+# Settings and secrets come from .env.prod only (repo root, mode 600, never committed), never from the dev .env.
+# `env_file` below hands it to the containers; `--env-file .env.prod` is still needed on the command line because
+# Compose fills the ${...} values in this file from ./.env unless told otherwise. See deploy/README.md.
+#
+# MySQL is DigitalOcean Managed MySQL, not a container here: TLS on port 25060, admin user `doadmin` (no root).
+# The containers and the host-side `make migrate` / `make ingest` use the same URLs from .env.prod. TLS comes from
+# MSP_DB_CA_FILE (the DO CA certificate, e.g. ./cert/do.ca.crt, relative to the repo root): the app passes it to
+# PyMySQL, so the URLs need no ?ssl_ca=. The containers get the file at /run/msp/do.ca.crt and that path in
+# MSP_DB_CA_FILE.
+# Redis stays app-local (DESIGN-v0.4-ADDENDUM A10). Only the web container is published, on 127.0.0.1: the host
+# nginx terminates TLS and proxies to it.
 name: msp-prod
 
 x-app: &app
@@ -14,17 +21,23 @@ x-app: &app
       APP_UID: ${APP_UID:-10001}
       APP_GID: ${APP_GID:-10001}
   env_file:
-    - path: .env
+    - path: .env.prod
       required: true
-  environment:
-    DATABASE_URL: ${COMPOSE_DATABASE_URL:?set COMPOSE_DATABASE_URL in .env (mysql:3306)}
-    REDIS_URL: ${COMPOSE_REDIS_URL:?set COMPOSE_REDIS_URL in .env (redis:6379)}
+  environment: &app-env
+    # DATABASE_URL (the API role on DO) comes only from env_file .env.prod, never from the shell; containers never
+    # get the ingest/migrator roles.
+    MSP_DB_CA_FILE: /run/msp/do.ca.crt
+    REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env.prod}@redis:6379/0
     INGEST_DATABASE_URL: ""
     MIGRATOR_DATABASE_URL: ""
-    # DESIGN v0.5 B2 (NS-REQ): No-save is the default and wins over the server .env; any other value stops the API.
+    # DESIGN v0.5 B2 (NS-REQ): No-save is the default and wins over .env.prod; any other value stops the API.
     DEFAULT_SESSION_MODE: nosave
+  volumes:
+    - type: bind
+      source: ${MSP_DB_CA_FILE:?set MSP_DB_CA_FILE in .env.prod (the DO CA certificate, e.g. ./cert/do.ca.crt)}
+      target: /run/msp/do.ca.crt
+      read_only: true
   depends_on:
-    mysql: { condition: service_healthy }
     redis: { condition: service_healthy }
   read_only: true
   tmpfs:
@@ -34,32 +47,15 @@ x-app: &app
   restart: unless-stopped
 
 services:
-  mysql:
-    image: mysql:8.4
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
-      MYSQL_DATABASE: msp
-    ports:
-      - "127.0.0.1:${MSP_MYSQL_PORT:-3307}:3306"
-    volumes:
-      - mysql-data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
-      interval: 5s
-      timeout: 5s
-      retries: 60
-    restart: unless-stopped
-
   redis:
     image: redis:7.4
-    # App-local (DESIGN-v0.4-ADDENDUM A10): Redis stays in this file even when MySQL is Thomas's existing server.
     # No persistence (DESIGN §8.5): no RDB, no AOF, /data on tmpfs, no core dumps.
     command:
       - sh
       - -c
       - exec redis-server --save "" --appendonly no --requirepass "$$REDIS_PASSWORD" --maxmemory 256mb --maxmemory-policy volatile-ttl
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env.prod}
     tmpfs:
       - /data
     ulimits:
@@ -80,12 +76,8 @@ services:
       timeout: 5s
       retries: 30
     environment:
-      DATABASE_URL: ${COMPOSE_DATABASE_URL:?set COMPOSE_DATABASE_URL in .env (mysql:3306)}
-      REDIS_URL: ${COMPOSE_REDIS_URL:?set COMPOSE_REDIS_URL in .env (redis:6379)}
-      INGEST_DATABASE_URL: ""
-      MIGRATOR_DATABASE_URL: ""
-      # Repeated here: this map replaces the x-app one for the api service (DESIGN v0.5 B2).
-      DEFAULT_SESSION_MODE: nosave
+      # Merged into the x-app map (DESIGN v0.5 B2 pin included), not a copy of it.
+      <<: *app-env
       API_WORKERS: ${API_WORKERS:-2}
 
   purge:
@@ -99,11 +91,10 @@ services:
     depends_on:
       api: { condition: service_healthy }
     ports:
-      - "127.0.0.1:${MSP_WEB_PORT:-8080}:8080"
+      # Blank/unset MSP_WEB_BIND = loopback only, for the host nginx (deploy/README.md section 4). A LAN IP or
+      # 0.0.0.0 serves plain HTTP to the LAN without nginx: trusted networks only, with COOKIE_SECURE=false.
+      - "${MSP_WEB_BIND:-127.0.0.1}:${MSP_WEB_PORT:-8080}:8080"
     read_only: true
     tmpfs:
       - /tmp
     restart: unless-stopped
-
-volumes:
-  mysql-data:
